@@ -1,0 +1,38 @@
+{
+  // Copy to "launch.json" and replace the two C:/path/to/cygwin64 paths with YOUR Cygwin location.
+  // launch.json is gitignored on purpose so personal machine paths are never committed.
+  //
+  // Cygwin gdb + cppdbg notes (all needed for a reliable session):
+  //  - Set a user env var CYGWIN=disable_pcon, then fully restart VS Code
+  //    (stops the WindowsDebugLauncher hang on modern Cygwin).
+  //  - externalConsole + "set startup-with-shell off" below also help.
+  //  - sourceFileMap maps Cygwin's /cygdrive/c source paths to C:\ so breakpoints bind.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "GDB (Cygwin): threads_demo.exe",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/threads_demo.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/path/to/cygwin64/bin/gdb.exe",
+      "preLaunchTask": "build-debug",
+      "sourceFileMap": {
+        "/cygdrive/c": "C:\\",
+        "/cygdrive/C": "C:\\"
+      },
+      "environment": [
+        { "name": "PATH", "value": "C:\\path\\to\\cygwin64\\bin;${env:PATH}" }
+      ],
+      "setupCommands": [
+        { "description": "Launch inferior without a shell (avoids Cygwin hang)", "text": "set startup-with-shell off", "ignoreFailures": true },
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true },
+        { "description": "Always stop at inspect_point", "text": "break inspect_point", "ignoreFailures": true }
+      ]
+    }
+  ]
+}

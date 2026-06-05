@@ -1,0 +1,18 @@
+{
+  // Copy to "tasks.json" and set the path below to YOUR Cygwin bin (where bash.exe + gcc live).
+  // tasks.json is gitignored on purpose so personal machine paths are never committed.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-debug",
+      "type": "process",
+      "command": "C:/path/to/cygwin64/bin/bash.exe",
+      "args": [
+        "-lc",
+        "cd \"$(cygpath -u '${workspaceFolder}')\" && gcc -g -O0 -o build/threads_demo.exe threads_demo.c"
+      ],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}

@@ -11,3 +11,8 @@ test-workspace/build/*
 !test-workspace/build/.gitkeep
 test-workspace/*.exe
 test-workspace/*.o
+
+# Personal debug configs: contain a machine-specific toolchain path, never commit.
+# See test-workspace/.vscode/*.example.json for portable templates.
+test-workspace/.vscode/launch.json
+test-workspace/.vscode/tasks.json
