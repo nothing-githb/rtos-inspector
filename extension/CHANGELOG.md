@@ -2,6 +2,19 @@
 
 All notable changes to the **RTOS Inspector** extension are documented here.
 
+## [0.7.0] - 2026-06-06
+
+### Changed
+- **Any number of sections.** The config is now a map of named sections; each
+  becomes its own dynamically-generated tab/table — `threads`, `semaphores`,
+  `mutexes`, `queues`, or any name you choose. Column styling is applied by
+  column name, so it works for any structure. (Previously limited to two fixed
+  `threads`/`semaphores` sections.)
+
+### Other
+- The bundled `test-workspace` example gains a third structure (a mutex list) to
+  demonstrate multiple sections.
+
 ## [0.6.0] - 2026-06-06
 
 ### Added

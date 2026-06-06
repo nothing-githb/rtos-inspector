@@ -26,6 +26,8 @@ by hand in the debugger.
 
 - **Config-driven & generic.** Point it at any global expression; no assumptions
   about your layout and no changes to your program.
+- **One tab per structure.** Add as many named sections as you have data
+  structures — each becomes its own table, with tabs generated dynamically.
 - **Two traversal modes:** `linked_list` (head pointer + `next` field) and
   `array` (`count` elements, with `.` / `->` element access).
 - **Arbitrary root expressions** — anything valid in GDB, e.g.
@@ -64,11 +66,10 @@ by hand in the debugger.
 
 ## Configuration
 
-You define up to two **sections**; each walks a linked list or an array of your
-structs and becomes its own sortable table / tab. The section keys are `threads`
-and `semaphores` — these are just the two tab labels, so point them at whatever
-collections you like (a thread list and a mutex list, two arbitrary node lists,
-etc.). Each section uses the same fields:
+Add **one section per data structure** — each becomes its own dynamically
+generated, sortable table / tab, and you can add **as many as you like**. The
+section's JSON key is its tab label (`threads`, `semaphores`, `mutexes`,
+`queues`, … — any name). Each section uses the same fields:
 
 | Field    | Meaning |
 |----------|---------|
@@ -107,6 +108,17 @@ etc.). Each section uses the same fields:
       { "label": "Max",        "expr": "max_count" },
       { "label": "Waiting",    "expr": "waiting" },
       { "label": "Discipline", "expr": "discipline" }
+    ]
+  },
+  "mutexes": {
+    "mode": "linked_list",
+    "root": "g_kernel.pools[0]->mutex_list",
+    "next": "next",
+    "fields": [
+      { "label": "ID",      "expr": "id" },
+      { "label": "Name",    "expr": "name" },
+      { "label": "Owner",   "expr": "owner" },
+      { "label": "Locked",  "expr": "locked" }
     ]
   }
 }

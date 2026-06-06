@@ -15,14 +15,10 @@ interface SectionCfg {
   max?: number;
   fields: FieldCfg[];
 }
-interface SyncCfg {
-  threads?: SectionCfg;
-  semaphores?: SectionCfg;
-}
+type SyncCfg = Record<string, unknown>;
 
 type Row = Record<string, string>;
-interface Section { columnsAll: string[]; hidden: string[]; rows: Row[]; summary: string; kind: string; }
-type SectionName = 'threads' | 'semaphores';
+interface Section { name: string; columnsAll: string[]; hidden: string[]; rows: Row[]; summary: string; }
 interface ColPref { order: string[]; hidden: string[]; }
 
 // ---------------------------------------------------------------------------
@@ -32,7 +28,7 @@ let panel: vscode.WebviewPanel | undefined;
 let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
-let columnPrefs: { threads?: ColPref; semaphores?: ColPref } = {};
+let columnPrefs: Record<string, ColPref> = {};
 const COLPREF_KEY = 'rtosInspector.columnPrefs';
 
 // ---------------------------------------------------------------------------
@@ -40,7 +36,7 @@ const COLPREF_KEY = 'rtosInspector.columnPrefs';
 // ---------------------------------------------------------------------------
 export function activate(context: vscode.ExtensionContext) {
   extContext = context;
-  columnPrefs = context.workspaceState.get<{ threads?: ColPref; semaphores?: ColPref }>(COLPREF_KEY) ?? {};
+  columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
   context.subscriptions.push(
     vscode.commands.registerCommand('rtosInspector.open', () => {
       openPanel(context);
@@ -203,24 +199,43 @@ function num(v: string): number {
   return m ? parseInt(m[0], 10) : NaN;
 }
 
-function threadSummary(rows: Row[]): string {
-  const running = rows.filter(r => /run/i.test(r['State'] ?? '')).length;
-  return `${rows.length} thread${rows.length === 1 ? '' : 's'}${running ? ` · ${running} running` : ''}`;
+// Generic özet: satır sayısı + (varsa) State/Count/Waiting kolonlarından çıkarımlar
+function summarize(name: string, rows: Row[]): string {
+  const parts = [`${rows.length} ${name}`];
+  const cols = rows.length ? Object.keys(rows[0]) : [];
+  if (cols.indexOf('State') !== -1) {
+    const running = rows.filter(r => /run/i.test(r['State'] ?? '')).length;
+    if (running) parts.push(`${running} running`);
+  }
+  if (cols.indexOf('Count') !== -1) {
+    const depleted = rows.filter(r => num(r['Count']) === 0).length;
+    if (depleted) parts.push(`${depleted} depleted`);
+  }
+  if (cols.indexOf('Waiting') !== -1) {
+    const waiters = rows.filter(r => num(r['Waiting']) > 0).length;
+    if (waiters) parts.push(`${waiters} with waiters`);
+  }
+  return parts.join(' · ');
 }
 
-function semSummary(rows: Row[]): string {
-  const contended = rows.filter(r => num(r['Count']) === 0).length;
-  const waiting = rows.reduce((a, r) => a + (num(r['Waiting']) > 0 ? 1 : 0), 0);
-  const parts = [`${rows.length} semaphore${rows.length === 1 ? '' : 's'}`];
-  if (contended) parts.push(`${contended} depleted`);
-  if (waiting) parts.push(`${waiting} with waiters`);
-  return parts.join(' · ');
+// Config'teki bölümleri (sıra korunarak) çıkar; yorum/anahtar dışı girdileri atla
+function extractSections(cfg: SyncCfg): Array<{ name: string; cfg: SectionCfg }> {
+  const out: Array<{ name: string; cfg: SectionCfg }> = [];
+  if (!cfg || typeof cfg !== 'object') return out;
+  for (const key of Object.keys(cfg)) {
+    if (key.startsWith('//')) continue; // yorum anahtarlarını atla
+    const v = (cfg as any)[key];
+    if (v && typeof v === 'object' && Array.isArray(v.fields) && typeof v.mode === 'string') {
+      out.push({ name: key, cfg: v as SectionCfg });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // Sütun tercihleri: kayıtlı sıra/gizli + config alanlarını birleştir
 // ---------------------------------------------------------------------------
-function effectiveColumns(section: SectionName, allLabels: string[]): { order: string[]; hidden: string[]; active: string[] } {
+function effectiveColumns(section: string, allLabels: string[]): { order: string[]; hidden: string[]; active: string[] } {
   const pref = columnPrefs[section];
   let order: string[];
   let hidden: string[];
@@ -242,16 +257,15 @@ async function buildSection(
   cfg: SectionCfg,
   frameId: number | undefined,
   cursor: string,
-  section: SectionName,
-  summaryFn: (rows: Row[]) => string
+  name: string
 ): Promise<Section> {
   const allLabels = cfg.fields.map(f => f.label);
-  const eff = effectiveColumns(section, allLabels);
+  const eff = effectiveColumns(name, allLabels);
   const effFields = eff.active
     .map(l => cfg.fields.find(f => f.label === l))
     .filter((f): f is FieldCfg => !!f);
   const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor);
-  return { columnsAll: eff.order, hidden: eff.hidden, rows, summary: summaryFn(rows), kind: section };
+  return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows) };
 }
 
 // ---------------------------------------------------------------------------
@@ -268,11 +282,11 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
     frameId = st?.stackFrames?.[0]?.id;
   } catch { /* ignore */ }
 
-  const sections: Record<string, Section> = {};
-  if (cfg.threads?.fields?.length)
-    sections.threads = await buildSection(session, cfg.threads, frameId, '$swt', 'threads', threadSummary);
-  if (cfg.semaphores?.fields?.length)
-    sections.semaphores = await buildSection(session, cfg.semaphores, frameId, '$sws', 'semaphores', semSummary);
+  const secs = extractSections(cfg);
+  const sections: Section[] = [];
+  for (let i = 0; i < secs.length; i++) {
+    sections.push(await buildSection(session, secs[i].cfg, frameId, '$ri_' + i, secs[i].name));
+  }
 
   panel.webview.postMessage({
     type: 'update',
@@ -294,8 +308,8 @@ function openPanel(context: vscode.ExtensionContext) {
   panel.webview.onDidReceiveMessage(
     (msg: any) => {
       if (msg?.type === 'refresh') { doRefresh(); return; }
-      if (msg?.type === 'setColumns' && (msg.section === 'threads' || msg.section === 'semaphores')) {
-        columnPrefs[msg.section as SectionName] = {
+      if (msg?.type === 'setColumns' && typeof msg.section === 'string' && msg.section) {
+        columnPrefs[msg.section] = {
           order: Array.isArray(msg.order) ? msg.order : [],
           hidden: Array.isArray(msg.hidden) ? msg.hidden : []
         };
@@ -449,50 +463,69 @@ function getHtml(): string {
     <button id="refresh" class="btn" title="Re-read config and refresh">⟳ Refresh</button>
   </div>
 
-  <div class="tabs">
-    <button class="tab active" data-tab="threads" id="tab-threads">Threads<span class="badge-count" id="cnt-threads">0</span></button>
-    <button class="tab" data-tab="semaphores" id="tab-semaphores">Semaphores<span class="badge-count" id="cnt-semaphores">0</span></button>
-  </div>
-
-  <div class="pane" id="pane-threads">
-    <div class="cols-bar">
-      <button class="btn cols-btn" data-sec="threads" title="Show / hide / reorder columns">▦ Columns</button>
-      <div class="cols-menu hidden" id="cols-threads"></div>
-    </div>
-    <div class="pane-body" id="body-threads">
-      <div class="empty">Threads will be listed here when the debug session stops.</div>
-    </div>
-  </div>
-  <div class="pane hidden" id="pane-semaphores">
-    <div class="cols-bar">
-      <button class="btn cols-btn" data-sec="semaphores" title="Show / hide / reorder columns">▦ Columns</button>
-      <div class="cols-menu hidden" id="cols-semaphores"></div>
-    </div>
-    <div class="pane-body" id="body-semaphores">
-      <div class="empty">Semaphore data will appear here.</div>
-    </div>
+  <div class="tabs" id="tabs"></div>
+  <div id="panes">
+    <div class="empty" style="padding: 28px 18px;">Sections from your config appear here when the debugger stops.</div>
   </div>
 
 <script nonce="${nonce}">
   const vscodeApi = acquireVsCodeApi();
   const statusEl = document.getElementById('status');
   const tsEl = document.getElementById('ts');
-  let activeTab = 'threads';
+  const tabsEl = document.getElementById('tabs');
+  const panesEl = document.getElementById('panes');
 
-  for (const t of document.querySelectorAll('.tab')) {
-    t.addEventListener('click', () => switchTab(t.dataset.tab));
-  }
+  const secState = {};       // name -> {sec, sortCol, sortDir, changed, changeCount, order, hidden}
+  let currentNames = [];     // ordered section names matching DOM indices
+  let activeName = null;
+
   document.getElementById('refresh').addEventListener('click', () => {
     vscodeApi.postMessage({ type: 'refresh' });
   });
-  function switchTab(name) {
-    activeTab = name;
-    for (const t of document.querySelectorAll('.tab')) {
-      t.classList.toggle('active', t.dataset.tab === name);
-      if (t.dataset.tab === name) t.classList.remove('haschg');
+
+  function cap(s) { s = String(s); return s.length ? s[0].toUpperCase() + s.slice(1) : s; }
+  function idxOf(name) { return currentNames.indexOf(name); }
+  function bodyEl(name) { const i = idxOf(name); return i < 0 ? null : document.getElementById('body-' + i); }
+  function colsMenuEl(name) { const i = idxOf(name); return i < 0 ? null : document.getElementById('cols-' + i); }
+  function tabElOf(name) { const i = idxOf(name); return i < 0 ? null : document.getElementById('tab-' + i); }
+  function cntElOf(name) { const i = idxOf(name); return i < 0 ? null : document.getElementById('cnt-' + i); }
+
+  function ensureLayout(names) {
+    if (JSON.stringify(names) === JSON.stringify(currentNames)) return;
+    currentNames = names.slice();
+    if (!names.length) {
+      tabsEl.innerHTML = '';
+      panesEl.innerHTML = '<div class="empty" style="padding:28px 18px;">No sections found in the config.</div>';
+      activeName = null;
+      return;
     }
-    for (const p of document.querySelectorAll('.pane'))
-      p.classList.toggle('hidden', p.id !== 'pane-' + name);
+    tabsEl.innerHTML = names.map((n, i) =>
+      '<button class="tab" data-idx="' + i + '" id="tab-' + i + '">' + esc(cap(n)) +
+      '<span class="badge-count" id="cnt-' + i + '">0</span></button>').join('');
+    panesEl.innerHTML = names.map((n, i) =>
+      '<div class="pane' + (i === 0 ? '' : ' hidden') + '" data-idx="' + i + '" id="pane-' + i + '">' +
+        '<div class="cols-bar">' +
+          '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>' +
+          '<div class="cols-menu hidden" id="cols-' + i + '"></div>' +
+        '</div>' +
+        '<div class="pane-body" id="body-' + i + '"></div>' +
+      '</div>').join('');
+    if (idxOf(activeName) === -1) activeName = names[0];
+    applyActive();
+  }
+
+  function applyActive() {
+    for (const t of tabsEl.querySelectorAll('.tab'))
+      t.classList.toggle('active', currentNames[+t.dataset.idx] === activeName);
+    for (const p of panesEl.querySelectorAll('.pane'))
+      p.classList.toggle('hidden', currentNames[+p.dataset.idx] !== activeName);
+  }
+
+  function switchTab(name) {
+    activeName = name;
+    const t = tabElOf(name);
+    if (t) t.classList.remove('haschg');
+    applyActive();
   }
 
   function esc(s) {
@@ -509,34 +542,26 @@ function getHtml(): string {
   }
   function asNum(v){ const m=String(v).match(/-?\\d+/); return m?parseInt(m[0],10):NaN; }
 
-  function cell(kind, col, val) {
-    const lc = col.toLowerCase();
-    if (kind === 'threads') {
-      if (lc.includes('state') || lc.includes('durum'))
-        return '<span class="badge ' + stateClass(val) + '">' + esc(val) + '</span>';
-      if (lc === 'id') return '<span class="idcol">' + esc(val) + '</span>';
-      return '<span class="' + (col==='ID'?'':'') + '">' + esc(val) + '</span>';
-    }
-    if (kind === 'semaphores') {
-      if (lc.includes('discipline'))
-        return '<span class="badge disc">' + esc(val) + '</span>';
-      if (lc === 'count' && asNum(val) === 0)
-        return '<span class="crit">' + esc(val) + '</span>';
-      if (lc.includes('wait') && asNum(val) > 0)
-        return '<span class="warn">' + esc(val) + '</span>';
-      if (lc === 'id') return '<span class="idcol">' + esc(val) + '</span>';
-    }
+  // Stiller artık bölüm türüne değil, KOLON ADINA göre uygulanır (generic)
+  function cell(col, val) {
+    const lc = String(col).toLowerCase();
+    if (lc.includes('state') || lc.includes('durum'))
+      return '<span class="badge ' + stateClass(val) + '">' + esc(val) + '</span>';
+    if (lc.includes('discipline'))
+      return '<span class="badge disc">' + esc(val) + '</span>';
+    if (lc === 'count' && asNum(val) === 0)
+      return '<span class="crit">' + esc(val) + '</span>';
+    if (lc.includes('wait') && asNum(val) > 0)
+      return '<span class="warn">' + esc(val) + '</span>';
+    if (lc === 'id') return '<span class="idcol">' + esc(val) + '</span>';
     return esc(val);
   }
 
-  function isMono(kind, col) {
-    const lc = col.toLowerCase();
-    if (kind === 'threads') return lc.includes('stack') || lc.includes('sp') || lc.includes('name');
-    return false;
+  function isMono(col) {
+    const lc = String(col).toLowerCase();
+    return lc.includes('stack') || lc.includes('sp') || lc.includes('name') ||
+           lc.includes('addr') || lc.includes('ptr');
   }
-
-  // Bölüm verisi + sıralama durumu (panel yenilense de tercih korunur)
-  const secState = { threads: null, semaphores: null };
 
   function parseNum(v) {
     const s = String(v).trim();
@@ -577,7 +602,7 @@ function getHtml(): string {
     return { map, count };
   }
 
-  function buildTable(kind, columns, rows, sortCol, sortDir, changed) {
+  function buildTable(columns, rows, sortCol, sortDir, changed) {
     if (!rows.length) return '<div class="empty">List is empty (root is NULL or count is 0).</div>';
     let data = rows;
     if (sortCol && columns.indexOf(sortCol) !== -1) {
@@ -602,10 +627,10 @@ function getHtml(): string {
         const ck = rk + '\\u0000' + c;
         const isChg = changed && Object.prototype.hasOwnProperty.call(changed, ck);
         const classes = [];
-        if (isMono(kind, c)) classes.push('mono');
+        if (isMono(c)) classes.push('mono');
         if (isChg) classes.push('changed');
         const clsAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
-        let inner = cell(kind, c, row[c] ?? '');
+        let inner = cell(c, row[c] ?? '');
         if (isChg) {
           const dir = changed[ck];
           const arrow = dir === 'up' ? '▲' : (dir === 'down' ? '▼' : '');
@@ -625,16 +650,16 @@ function getHtml(): string {
 
   function paint(name) {
     const st = secState[name];
-    const body = document.getElementById('body-' + name);
-    if (!st || !st.sec) return;
+    const body = bodyEl(name);
+    if (!st || !st.sec || !body) return;
     const cols = displayCols(st);
     body.innerHTML =
       '<div class="summary">' + esc(st.sec.summary) + '</div>' +
-      buildTable(st.sec.kind, cols, st.sec.rows, st.sortCol, st.sortDir, st.changed);
+      buildTable(cols, st.sec.rows, st.sortCol, st.sortDir, st.changed);
   }
 
   function buildColsMenu(name) {
-    const menu = document.getElementById('cols-' + name);
+    const menu = colsMenuEl(name);
     const st = secState[name];
     if (!menu) return;
     if (!st) { menu.innerHTML = ''; return; }
@@ -662,11 +687,6 @@ function getHtml(): string {
   }
 
   function renderSection(name, sec) {
-    const tab = document.getElementById('tab-' + name);
-    const cnt = document.getElementById('cnt-' + name);
-    if (!sec) { tab.classList.add('hidden'); secState[name] = null; buildColsMenu(name); return 0; }
-    tab.classList.remove('hidden');
-    cnt.textContent = sec.rows.length;
     const prev = secState[name];
     const order = Array.isArray(sec.columnsAll) ? sec.columnsAll.slice() : [];
     const hidden = Array.isArray(sec.hidden) ? sec.hidden.slice() : [];
@@ -675,143 +695,154 @@ function getHtml(): string {
     const sortDir = prev && prev.sortDir ? prev.sortDir : 'asc';
     const ch = computeChanges(prev && prev.sec ? prev.sec.rows : null, sec.rows, cols);
     secState[name] = { sec, sortCol, sortDir, changed: ch.map, changeCount: ch.count, order, hidden };
-    // değişen ama o an açık olmayan sekmeyi işaretle
-    if (ch.count > 0 && name !== activeTab) tab.classList.add('haschg');
-    else if (name === activeTab) tab.classList.remove('haschg');
+    const cnt = cntElOf(name);
+    if (cnt) cnt.textContent = sec.rows.length;
+    const tab = tabElOf(name);
+    if (tab) {
+      if (ch.count > 0 && name !== activeName) tab.classList.add('haschg');
+      else if (name === activeName) tab.classList.remove('haschg');
+    }
     paint(name);
     buildColsMenu(name);
     return ch.count;
   }
 
-  // Başlık: tıkla→sırala, sürükle→yer değiştir, sağ-tık→sütun menüsü
-  for (const name of ['threads', 'semaphores']) {
-    const pane = document.getElementById('pane-' + name);
-    let dragCol = null;
-    let suppressClick = false;
+  // Sekme tıklaması (delegasyon — container kalıcı, sekmeler dinamik)
+  tabsEl.addEventListener('click', e => {
+    const t = e.target.closest('.tab[data-idx]');
+    if (t) switchTab(currentNames[+t.dataset.idx]);
+  });
 
-    pane.addEventListener('click', e => {
-      const th = e.target.closest('th[data-col]');
-      if (!th) return;
+  function paneName(e) {
+    const pane = e.target.closest('.pane[data-idx]');
+    return pane ? currentNames[+pane.dataset.idx] : null;
+  }
+
+  // Tüm pane etkileşimleri #panes üzerinde delegasyonla (dinamik pane'ler için)
+  let dragCol = null, dragName = null, suppressClick = false;
+
+  panesEl.addEventListener('click', e => {
+    const colsBtn = e.target.closest('.cols-btn');
+    if (colsBtn) {
+      e.stopPropagation();
+      const name = paneName(e);
+      const menu = colsMenuEl(name);
+      const willOpen = menu.classList.contains('hidden');
+      for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+      if (willOpen) {
+        menu.style.position = ''; menu.style.left = ''; menu.style.top = '';
+        buildColsMenu(name);
+        menu.classList.remove('hidden');
+      }
+      return;
+    }
+    const moveBtn = e.target.closest('.cols-menu button[data-act]');
+    if (moveBtn) {
+      e.stopPropagation();
+      const name = paneName(e);
+      const st = secState[name];
+      if (!st) return;
+      const label = moveBtn.closest('.cols-item').dataset.label;
+      const i = st.order.indexOf(label);
+      if (moveBtn.dataset.act === 'up' && i > 0) {
+        const t = st.order[i - 1]; st.order[i - 1] = st.order[i]; st.order[i] = t;
+        afterColChange(name, false);
+      } else if (moveBtn.dataset.act === 'down' && i < st.order.length - 1) {
+        const t = st.order[i + 1]; st.order[i + 1] = st.order[i]; st.order[i] = t;
+        afterColChange(name, false);
+      }
+      return;
+    }
+    if (e.target.closest('.cols-menu')) { e.stopPropagation(); return; }
+    const th = e.target.closest('th[data-col]');
+    if (th) {
       if (suppressClick) { suppressClick = false; return; }
+      const name = paneName(e);
       const st = secState[name];
       if (!st) return;
       const col = th.dataset.col;
       if (st.sortCol === col) st.sortDir = st.sortDir === 'asc' ? 'desc' : 'asc';
       else { st.sortCol = col; st.sortDir = 'asc'; }
       paint(name);
-    });
-
-    pane.addEventListener('dragstart', e => {
-      const th = e.target.closest('th[data-col]');
-      if (!th) return;
-      suppressClick = false;
-      dragCol = th.dataset.col;
-      th.classList.add('dragging');
-      if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragCol); }
-    });
-    pane.addEventListener('dragover', e => {
-      if (dragCol === null) return;
-      const th = e.target.closest('th[data-col]');
-      if (!th) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    });
-    pane.addEventListener('drop', e => {
-      if (dragCol === null) return;
-      const th = e.target.closest('th[data-col]');
-      if (!th) return;
-      e.preventDefault();
-      const target = th.dataset.col;
-      const st = secState[name];
-      if (st && target !== dragCol) {
-        const from = st.order.indexOf(dragCol), to = st.order.indexOf(target);
-        if (from !== -1 && to !== -1) {
-          st.order.splice(from, 1);
-          st.order.splice(to, 0, dragCol);
-          afterColChange(name, false);
-        }
-      }
-      suppressClick = true;
-      setTimeout(() => { suppressClick = false; }, 60);
-      dragCol = null;
-    });
-    pane.addEventListener('dragend', () => {
-      for (const x of pane.querySelectorAll('th.dragging')) x.classList.remove('dragging');
-      dragCol = null;
-    });
-
-    pane.addEventListener('contextmenu', e => {
-      const th = e.target.closest('th[data-col]');
-      if (!th || !secState[name]) return;
-      e.preventDefault();
-      for (const n of ['threads', 'semaphores'])
-        document.getElementById('cols-' + n).classList.add('hidden');
-      buildColsMenu(name);
-      const menu = document.getElementById('cols-' + name);
-      menu.style.position = 'fixed';
-      menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
-      menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
-      menu.classList.remove('hidden');
-    });
-  }
-
-  // Sütun menüsü: aç/kapa + görünürlük + sıra (bir kez kurulur, container kalıcı)
-  for (const name of ['threads', 'semaphores']) {
-    const btn = document.querySelector('.cols-btn[data-sec="' + name + '"]');
-    const menu = document.getElementById('cols-' + name);
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const willOpen = menu.classList.contains('hidden');
-      // diğer menüleri kapat
-      for (const n of ['threads', 'semaphores'])
-        document.getElementById('cols-' + n).classList.add('hidden');
-      if (willOpen) {
-        // sağ-tık'tan kalan sabit konumu sıfırla → CSS'teki .cols-bar altına otursun
-        menu.style.position = ''; menu.style.left = ''; menu.style.top = '';
-        buildColsMenu(name);
-        menu.classList.remove('hidden');
-      }
-    });
-    menu.addEventListener('click', e => {
-      e.stopPropagation();
-      const b = e.target.closest('button[data-act]');
-      if (!b) return;
-      const st = secState[name];
-      if (!st) return;
-      const label = b.closest('.cols-item').dataset.label;
-      const i = st.order.indexOf(label);
-      if (b.dataset.act === 'up' && i > 0) {
-        const t = st.order[i - 1]; st.order[i - 1] = st.order[i]; st.order[i] = t;
-        afterColChange(name, false);
-      } else if (b.dataset.act === 'down' && i < st.order.length - 1) {
-        const t = st.order[i + 1]; st.order[i + 1] = st.order[i]; st.order[i] = t;
-        afterColChange(name, false);
-      }
-    });
-    menu.addEventListener('change', e => {
-      const cb = e.target.closest('input[data-act="vis"]');
-      if (!cb) return;
-      const st = secState[name];
-      if (!st) return;
-      const label = cb.closest('.cols-item').dataset.label;
-      const hi = st.hidden.indexOf(label);
-      if (cb.checked) {
-        if (hi !== -1) st.hidden.splice(hi, 1);
-        afterColChange(name, true);   // gösteriliyor → verisini çek
-      } else {
-        // son görünen sütunu gizlemeye izin verme
-        const visible = st.order.filter(l => st.hidden.indexOf(l) === -1).length;
-        if (visible <= 1) { cb.checked = true; return; }
-        if (hi === -1) st.hidden.push(label);
-        afterColChange(name, false);
-      }
-    });
-  }
-  document.addEventListener('click', () => {
-    for (const n of ['threads', 'semaphores']) {
-      const mm = document.getElementById('cols-' + n);
-      if (mm) mm.classList.add('hidden');
     }
+  });
+
+  panesEl.addEventListener('change', e => {
+    const cb = e.target.closest('.cols-menu input[data-act="vis"]');
+    if (!cb) return;
+    const name = paneName(e);
+    const st = secState[name];
+    if (!st) return;
+    const label = cb.closest('.cols-item').dataset.label;
+    const hi = st.hidden.indexOf(label);
+    if (cb.checked) {
+      if (hi !== -1) st.hidden.splice(hi, 1);
+      afterColChange(name, true);
+    } else {
+      const visible = st.order.filter(l => st.hidden.indexOf(l) === -1).length;
+      if (visible <= 1) { cb.checked = true; return; }
+      if (hi === -1) st.hidden.push(label);
+      afterColChange(name, false);
+    }
+  });
+
+  panesEl.addEventListener('dragstart', e => {
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    suppressClick = false;
+    dragName = paneName(e);
+    dragCol = th.dataset.col;
+    th.classList.add('dragging');
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragCol); }
+  });
+  panesEl.addEventListener('dragover', e => {
+    if (dragCol === null) return;
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  });
+  panesEl.addEventListener('drop', e => {
+    if (dragCol === null) return;
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    e.preventDefault();
+    const name = paneName(e);
+    const st = secState[name];
+    const target = th.dataset.col;
+    if (st && name === dragName && target !== dragCol) {
+      const from = st.order.indexOf(dragCol), to = st.order.indexOf(target);
+      if (from !== -1 && to !== -1) {
+        st.order.splice(from, 1);
+        st.order.splice(to, 0, dragCol);
+        afterColChange(name, false);
+      }
+    }
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 60);
+    dragCol = null; dragName = null;
+  });
+  panesEl.addEventListener('dragend', () => {
+    for (const x of panesEl.querySelectorAll('th.dragging')) x.classList.remove('dragging');
+    dragCol = null; dragName = null;
+  });
+  panesEl.addEventListener('contextmenu', e => {
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    const name = paneName(e);
+    if (!secState[name]) return;
+    e.preventDefault();
+    for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+    buildColsMenu(name);
+    const menu = colsMenuEl(name);
+    menu.style.position = 'fixed';
+    menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+    menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
+    menu.classList.remove('hidden');
+  });
+
+  document.addEventListener('click', () => {
+    for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
   });
 
   window.addEventListener('message', e => {
@@ -820,21 +851,15 @@ function getHtml(): string {
       statusEl.textContent = 'stopped';
       statusEl.className = 'pill';
       tsEl.textContent = m.ts ? ('updated ' + m.ts) : '';
-      const changed = (renderSection('threads', m.sections.threads) || 0) +
-                      (renderSection('semaphores', m.sections.semaphores) || 0);
+      const list = Array.isArray(m.sections) ? m.sections : [];
+      ensureLayout(list.map(s => s.name));
+      for (const k of Object.keys(secState))
+        if (list.findIndex(s => s.name === k) === -1) delete secState[k];
+      let changed = 0;
+      for (const s of list) changed += (renderSection(s.name, s) || 0);
       const chEl = document.getElementById('changes');
-      if (changed > 0) {
-        chEl.textContent = changed + ' changed';
-        chEl.classList.remove('hidden');
-      } else {
-        chEl.classList.add('hidden');
-      }
-      // aktif sekme gizlendiyse görünen ilk sekmeye geç
-      const at = document.getElementById('tab-' + activeTab);
-      if (at.classList.contains('hidden')) {
-        const first = document.querySelector('.tab:not(.hidden)');
-        if (first) switchTab(first.dataset.tab);
-      }
+      if (changed > 0) { chEl.textContent = changed + ' changed'; chEl.classList.remove('hidden'); }
+      else chEl.classList.add('hidden');
     } else if (m.type === 'running') {
       statusEl.textContent = 'running…';
       statusEl.className = 'pill run';

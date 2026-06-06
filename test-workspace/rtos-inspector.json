@@ -23,5 +23,17 @@
       { "label": "Waiting",    "expr": "waiting" },
       { "label": "Discipline", "expr": "discipline" }
     ]
+  },
+  "mutexes": {
+    "mode": "linked_list",
+    "root": "g_kernel.pools[0]->mutex_list",
+    "next": "next",
+    "fields": [
+      { "label": "ID",      "expr": "id" },
+      { "label": "Name",    "expr": "name" },
+      { "label": "Owner",   "expr": "owner" },
+      { "label": "Locked",  "expr": "locked" },
+      { "label": "Waiters", "expr": "waiters" }
+    ]
   }
 }

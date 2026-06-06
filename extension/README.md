@@ -54,15 +54,15 @@ by hand in the debugger.
 2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
 3. Run **“RTOS Inspector: Open Panel”** from the Command Palette.
 4. When you hit a breakpoint the panel fills in; on `continue` it shows
-   "running…", and it refreshes again on the next stop. Switch between the
-   **Threads** and **Semaphores** tabs at the top.
+   "running…", and it refreshes again on the next stop. Each config section gets
+   its own tab at the top.
 
 ## Configuration schema
 
-You define up to two **sections**; each walks a linked list or an array of your
-structs and becomes its own sortable table / tab. The keys are `threads` and
-`semaphores` (just the two tab labels) — point them at any collections you like.
-Each section uses the same fields:
+Add **one section per data structure** — each becomes its own dynamically
+generated, sortable table / tab, and you can add **as many as you like**. The
+section's JSON key is its tab label (`threads`, `semaphores`, `mutexes`, … — any
+name). Each section uses the same fields:
 
 | Field    | Meaning |
 |----------|---------|
@@ -102,6 +102,17 @@ Each section uses the same fields:
       { "label": "Waiting",    "expr": "waiting" },
       { "label": "Discipline", "expr": "discipline" }
     ]
+  },
+  "mutexes": {
+    "mode": "linked_list",
+    "root": "g_kernel.pools[0]->mutex_list",
+    "next": "next",
+    "fields": [
+      { "label": "ID",      "expr": "id" },
+      { "label": "Name",    "expr": "name" },
+      { "label": "Owner",   "expr": "owner" },
+      { "label": "Locked",  "expr": "locked" }
+    ]
   }
 }
 ```
@@ -123,9 +134,9 @@ An `array`-mode example:
 }
 ```
 
-> The two sections can hold **any** struct collection — a mutex list, a ready
-> queue, a free-list, etc. — in either mode. Column labels and expressions are
-> entirely up to you.
+> Add a section for **any** struct collection — a mutex list, a ready queue, a
+> free-list, etc. — in either mode; each gets its own tab. Column labels and
+> expressions are entirely up to you.
 
 ### Notes on `expr`
 
