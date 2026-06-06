@@ -21,7 +21,9 @@ interface SyncCfg {
 }
 
 type Row = Record<string, string>;
-interface Section { columns: string[]; rows: Row[]; summary: string; kind: string; }
+interface Section { columnsAll: string[]; hidden: string[]; rows: Row[]; summary: string; kind: string; }
+type SectionName = 'threads' | 'semaphores';
+interface ColPref { order: string[]; hidden: string[]; }
 
 // ---------------------------------------------------------------------------
 // Global durum
@@ -29,11 +31,16 @@ interface Section { columns: string[]; rows: Row[]; summary: string; kind: strin
 let panel: vscode.WebviewPanel | undefined;
 let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
+let extContext: vscode.ExtensionContext | undefined;
+let columnPrefs: { threads?: ColPref; semaphores?: ColPref } = {};
+const COLPREF_KEY = 'syncwatch.columnPrefs';
 
 // ---------------------------------------------------------------------------
 // Aktivasyon
 // ---------------------------------------------------------------------------
 export function activate(context: vscode.ExtensionContext) {
+  extContext = context;
+  columnPrefs = context.workspaceState.get<{ threads?: ColPref; semaphores?: ColPref }>(COLPREF_KEY) ?? {};
   context.subscriptions.push(
     vscode.commands.registerCommand('syncwatch.open', () => {
       openPanel(context);
@@ -211,6 +218,43 @@ function semSummary(rows: Row[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Sütun tercihleri: kayıtlı sıra/gizli + config alanlarını birleştir
+// ---------------------------------------------------------------------------
+function effectiveColumns(section: SectionName, allLabels: string[]): { order: string[]; hidden: string[]; active: string[] } {
+  const pref = columnPrefs[section];
+  let order: string[];
+  let hidden: string[];
+  if (pref && Array.isArray(pref.order) && pref.order.length) {
+    order = pref.order.filter(l => allLabels.includes(l));
+    for (const l of allLabels) if (!order.includes(l)) order.push(l); // config'e yeni eklenenler sona, görünür
+    hidden = (pref.hidden ?? []).filter(l => allLabels.includes(l));
+  } else {
+    order = allLabels.slice();
+    hidden = [];
+  }
+  const active = order.filter(l => !hidden.includes(l));
+  return { order, hidden, active };
+}
+
+// Yalnız AKTİF sütunları gdb'den çek (pasif sütunlar için print çalıştırılmaz)
+async function buildSection(
+  session: vscode.DebugSession,
+  cfg: SectionCfg,
+  frameId: number | undefined,
+  cursor: string,
+  section: SectionName,
+  summaryFn: (rows: Row[]) => string
+): Promise<Section> {
+  const allLabels = cfg.fields.map(f => f.label);
+  const eff = effectiveColumns(section, allLabels);
+  const effFields = eff.active
+    .map(l => cfg.fields.find(f => f.label === l))
+    .filter((f): f is FieldCfg => !!f);
+  const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor);
+  return { columnsAll: eff.order, hidden: eff.hidden, rows, summary: summaryFn(rows), kind: section };
+}
+
+// ---------------------------------------------------------------------------
 // Yenileme
 // ---------------------------------------------------------------------------
 async function refresh(session: vscode.DebugSession, threadId: number) {
@@ -225,25 +269,10 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   } catch { /* ignore */ }
 
   const sections: Record<string, Section> = {};
-
-  if (cfg.threads?.fields?.length) {
-    const rows = await collectSection(session, cfg.threads, frameId, '$swt');
-    sections.threads = {
-      columns: cfg.threads.fields.map(f => f.label),
-      rows,
-      summary: threadSummary(rows),
-      kind: 'threads'
-    };
-  }
-  if (cfg.semaphores?.fields?.length) {
-    const rows = await collectSection(session, cfg.semaphores, frameId, '$sws');
-    sections.semaphores = {
-      columns: cfg.semaphores.fields.map(f => f.label),
-      rows,
-      summary: semSummary(rows),
-      kind: 'semaphores'
-    };
-  }
+  if (cfg.threads?.fields?.length)
+    sections.threads = await buildSection(session, cfg.threads, frameId, '$swt', 'threads', threadSummary);
+  if (cfg.semaphores?.fields?.length)
+    sections.semaphores = await buildSection(session, cfg.semaphores, frameId, '$sws', 'semaphores', semSummary);
 
   panel.webview.postMessage({
     type: 'update',
@@ -263,7 +292,18 @@ function openPanel(context: vscode.ExtensionContext) {
   );
   panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
   panel.webview.onDidReceiveMessage(
-    (msg: any) => { if (msg?.type === 'refresh') doRefresh(); },
+    (msg: any) => {
+      if (msg?.type === 'refresh') { doRefresh(); return; }
+      if (msg?.type === 'setColumns' && (msg.section === 'threads' || msg.section === 'semaphores')) {
+        columnPrefs[msg.section as SectionName] = {
+          order: Array.isArray(msg.order) ? msg.order : [],
+          hidden: Array.isArray(msg.hidden) ? msg.hidden : []
+        };
+        extContext?.workspaceState.update(COLPREF_KEY, columnPrefs);
+        // yeni bir sütun aktifleştirildiyse verisini çekmek için yenile (durmuşsa)
+        if (msg.refetch) doRefresh();
+      }
+    },
     null,
     context.subscriptions
   );
@@ -307,6 +347,28 @@ function getHtml(): string {
     color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   }
   .btn:hover { background: var(--vscode-list-hoverBackground); }
+
+  .cols-bar { position: relative; margin: 12px 2px 0; }
+  .cols-menu {
+    position: absolute; z-index: 5; margin-top: 4px; min-width: 210px;
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,0.3)));
+    border-radius: 8px; padding: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .cols-menu.hidden { display: none; }
+  .cols-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.55; padding: 2px 6px 6px; }
+  .cols-item {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 4px 6px; border-radius: 5px;
+  }
+  .cols-item:hover { background: var(--vscode-list-hoverBackground); }
+  .cols-item label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12.5px; }
+  .cols-move button {
+    appearance: none; cursor: pointer; border: none; background: transparent;
+    color: var(--vscode-foreground); font-size: 12px; padding: 2px 6px; border-radius: 4px;
+  }
+  .cols-move button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
+  .cols-move button:disabled { opacity: 0.3; cursor: default; }
 
   .tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
   .tab {
@@ -391,10 +453,22 @@ function getHtml(): string {
   </div>
 
   <div class="pane" id="pane-threads">
-    <div class="empty">Threads will be listed here when the debug session stops.</div>
+    <div class="cols-bar">
+      <button class="btn cols-btn" data-sec="threads" title="Show / hide / reorder columns">▦ Columns</button>
+      <div class="cols-menu hidden" id="cols-threads"></div>
+    </div>
+    <div class="pane-body" id="body-threads">
+      <div class="empty">Threads will be listed here when the debug session stops.</div>
+    </div>
   </div>
   <div class="pane hidden" id="pane-semaphores">
-    <div class="empty">Semaphore data will appear here.</div>
+    <div class="cols-bar">
+      <button class="btn cols-btn" data-sec="semaphores" title="Show / hide / reorder columns">▦ Columns</button>
+      <div class="cols-menu hidden" id="cols-semaphores"></div>
+    </div>
+    <div class="pane-body" id="body-semaphores">
+      <div class="empty">Semaphore data will appear here.</div>
+    </div>
   </div>
 
 <script nonce="${nonce}">
@@ -541,30 +615,68 @@ function getHtml(): string {
     return h + '</tbody></table>';
   }
 
+  // Görünen sütunlar = kullanıcı sırasındaki - gizlenenler
+  function displayCols(st) {
+    return st.order.filter(l => st.hidden.indexOf(l) === -1);
+  }
+
   function paint(name) {
     const st = secState[name];
-    const pane = document.getElementById('pane-' + name);
+    const body = document.getElementById('body-' + name);
     if (!st || !st.sec) return;
-    pane.innerHTML =
+    const cols = displayCols(st);
+    body.innerHTML =
       '<div class="summary">' + esc(st.sec.summary) + '</div>' +
-      buildTable(st.sec.kind, st.sec.columns, st.sec.rows, st.sortCol, st.sortDir, st.changed);
+      buildTable(st.sec.kind, cols, st.sec.rows, st.sortCol, st.sortDir, st.changed);
+  }
+
+  function buildColsMenu(name) {
+    const menu = document.getElementById('cols-' + name);
+    const st = secState[name];
+    if (!menu) return;
+    if (!st) { menu.innerHTML = ''; return; }
+    let h = '<div class="cols-title">Columns</div>';
+    st.order.forEach((label, i) => {
+      const checked = st.hidden.indexOf(label) === -1 ? ' checked' : '';
+      h += '<div class="cols-item" data-label="' + esc(label) + '">' +
+        '<label><input type="checkbox" data-act="vis"' + checked + '> ' + esc(label) + '</label>' +
+        '<span class="cols-move">' +
+        '<button data-act="up" title="Move up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button data-act="down" title="Move down"' + (i === st.order.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '</span></div>';
+    });
+    menu.innerHTML = h;
+  }
+
+  function afterColChange(name, refetch) {
+    const st = secState[name];
+    paint(name);
+    buildColsMenu(name);
+    vscodeApi.postMessage({
+      type: 'setColumns', section: name,
+      order: st.order.slice(), hidden: st.hidden.slice(), refetch: !!refetch
+    });
   }
 
   function renderSection(name, sec) {
     const tab = document.getElementById('tab-' + name);
     const cnt = document.getElementById('cnt-' + name);
-    if (!sec) { tab.classList.add('hidden'); secState[name] = null; return 0; }
+    if (!sec) { tab.classList.add('hidden'); secState[name] = null; buildColsMenu(name); return 0; }
     tab.classList.remove('hidden');
     cnt.textContent = sec.rows.length;
     const prev = secState[name];
-    const sortCol = prev && prev.sortCol && sec.columns.indexOf(prev.sortCol) !== -1 ? prev.sortCol : null;
+    const order = Array.isArray(sec.columnsAll) ? sec.columnsAll.slice() : [];
+    const hidden = Array.isArray(sec.hidden) ? sec.hidden.slice() : [];
+    const cols = order.filter(l => hidden.indexOf(l) === -1);
+    const sortCol = prev && prev.sortCol && cols.indexOf(prev.sortCol) !== -1 ? prev.sortCol : null;
     const sortDir = prev && prev.sortDir ? prev.sortDir : 'asc';
-    const ch = computeChanges(prev && prev.sec ? prev.sec.rows : null, sec.rows, sec.columns);
-    secState[name] = { sec, sortCol, sortDir, changed: ch.map, changeCount: ch.count };
+    const ch = computeChanges(prev && prev.sec ? prev.sec.rows : null, sec.rows, cols);
+    secState[name] = { sec, sortCol, sortDir, changed: ch.map, changeCount: ch.count, order, hidden };
     // değişen ama o an açık olmayan sekmeyi işaretle
     if (ch.count > 0 && name !== activeTab) tab.classList.add('haschg');
     else if (name === activeTab) tab.classList.remove('haschg');
     paint(name);
+    buildColsMenu(name);
     return ch.count;
   }
 
@@ -581,6 +693,60 @@ function getHtml(): string {
       paint(name);
     });
   }
+
+  // Sütun menüsü: aç/kapa + görünürlük + sıra (bir kez kurulur, container kalıcı)
+  for (const name of ['threads', 'semaphores']) {
+    const btn = document.querySelector('.cols-btn[data-sec="' + name + '"]');
+    const menu = document.getElementById('cols-' + name);
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const willOpen = menu.classList.contains('hidden');
+      // diğer menüleri kapat
+      for (const n of ['threads', 'semaphores'])
+        document.getElementById('cols-' + n).classList.add('hidden');
+      if (willOpen) { buildColsMenu(name); menu.classList.remove('hidden'); }
+    });
+    menu.addEventListener('click', e => {
+      e.stopPropagation();
+      const b = e.target.closest('button[data-act]');
+      if (!b) return;
+      const st = secState[name];
+      if (!st) return;
+      const label = b.closest('.cols-item').dataset.label;
+      const i = st.order.indexOf(label);
+      if (b.dataset.act === 'up' && i > 0) {
+        const t = st.order[i - 1]; st.order[i - 1] = st.order[i]; st.order[i] = t;
+        afterColChange(name, false);
+      } else if (b.dataset.act === 'down' && i < st.order.length - 1) {
+        const t = st.order[i + 1]; st.order[i + 1] = st.order[i]; st.order[i] = t;
+        afterColChange(name, false);
+      }
+    });
+    menu.addEventListener('change', e => {
+      const cb = e.target.closest('input[data-act="vis"]');
+      if (!cb) return;
+      const st = secState[name];
+      if (!st) return;
+      const label = cb.closest('.cols-item').dataset.label;
+      const hi = st.hidden.indexOf(label);
+      if (cb.checked) {
+        if (hi !== -1) st.hidden.splice(hi, 1);
+        afterColChange(name, true);   // gösteriliyor → verisini çek
+      } else {
+        // son görünen sütunu gizlemeye izin verme
+        const visible = st.order.filter(l => st.hidden.indexOf(l) === -1).length;
+        if (visible <= 1) { cb.checked = true; return; }
+        if (hi === -1) st.hidden.push(label);
+        afterColChange(name, false);
+      }
+    });
+  }
+  document.addEventListener('click', () => {
+    for (const n of ['threads', 'semaphores']) {
+      const mm = document.getElementById('cols-' + n);
+      if (mm) mm.classList.add('hidden');
+    }
+  });
 
   window.addEventListener('message', e => {
     const m = e.data;

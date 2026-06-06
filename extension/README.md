@@ -30,6 +30,9 @@ extension knows nothing about your structs.
 - **Change highlighting.** Values that changed since the previous stop are
   highlighted (with ▲/▼ for numeric deltas), a "N changed" badge shows the total,
   and tabs that changed in the background flag their count.
+- **Pick & reorder columns.** A "▦ Columns" menu per tab toggles column
+  visibility and order (saved per workspace). Hidden columns are **not** read
+  from GDB at all — enabling one fetches its data on the spot.
 - **Read-only & safe.** SyncWatch only *reads* globals — it never calls
   functions, so your program state is never disturbed.
 - **Readable UI.** Thread `State` becomes a colored badge

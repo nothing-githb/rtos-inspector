@@ -2,6 +2,17 @@
 
 All notable changes to the **SyncWatch** extension are documented here.
 
+## [0.5.0] - 2026-06-06
+
+### Added
+- **Column show/hide and reorder.** A "▦ Columns" menu per tab lets you toggle
+  which columns are visible and move them up/down. Preferences persist per
+  workspace.
+
+### Changed
+- **Hidden columns are no longer fetched from GDB.** Only visible columns issue
+  `print` commands; enabling a column fetches its data on the spot (when stopped).
+
 ## [0.4.0] - 2026-06-06
 
 ### Added
