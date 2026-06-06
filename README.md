@@ -42,6 +42,9 @@ by hand in the debugger.
   all**; enabling one fetches its data on the spot.
 - **Refresh on demand or on change** — a Refresh button re-reads the config, and
   the panel auto-refreshes when `rtos-inspector.json` changes on disk.
+- **Pause when you don't need it** — a Pause/Resume toggle stops the
+  auto-refresh-on-stop (and GDB queries); Refresh still works on demand. The
+  choice is remembered per workspace.
 - **Read-only & safe** — only *reads* globals; never calls functions, so program
   state is never disturbed.
 

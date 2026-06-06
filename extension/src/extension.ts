@@ -30,6 +30,8 @@ let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: Record<string, ColPref> = {};
 const COLPREF_KEY = 'rtosInspector.columnPrefs';
+let paused = false;                         // duraklatılınca durakta otomatik yenileme yapılmaz
+const PAUSED_KEY = 'rtosInspector.paused';
 
 // ---------------------------------------------------------------------------
 // Aktivasyon
@@ -37,6 +39,7 @@ const COLPREF_KEY = 'rtosInspector.columnPrefs';
 export function activate(context: vscode.ExtensionContext) {
   extContext = context;
   columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
+  paused = context.workspaceState.get<boolean>(PAUSED_KEY) ?? false;
   context.subscriptions.push(
     vscode.commands.registerCommand('rtosInspector.open', () => {
       openPanel(context);
@@ -57,9 +60,9 @@ export function activate(context: vscode.ExtensionContext) {
               if (msg.event === 'stopped') {
                 const threadId = msg.body?.threadId ?? 0;
                 lastStopped = { session, threadId };
-                refresh(session, threadId);
+                if (!paused) refresh(session, threadId);
               } else if (msg.event === 'continued') {
-                panel?.webview.postMessage({ type: 'running' });
+                if (!paused) panel?.webview.postMessage({ type: 'running' });
               }
             }
           };
@@ -316,6 +319,10 @@ function openPanel(context: vscode.ExtensionContext) {
         extContext?.workspaceState.update(COLPREF_KEY, columnPrefs);
         // yeni bir sütun aktifleştirildiyse verisini çekmek için yenile (durmuşsa)
         if (msg.refetch) doRefresh();
+      } else if (msg?.type === 'setPaused') {
+        paused = !!msg.paused;
+        extContext?.workspaceState.update(PAUSED_KEY, paused);
+        if (!paused && lastStopped) refresh(lastStopped.session, lastStopped.threadId);
       }
     },
     null,
@@ -352,6 +359,7 @@ function getHtml(): string {
     background: rgba(46,204,113,0.18); color: #2ecc71;
   }
   .pill.run { background: rgba(241,196,15,0.20); color: #f1c40f; }
+  .pill.paused { background: rgba(120,120,128,0.28); color: var(--vscode-foreground); opacity: 0.85; }
   .ts { font-size: 11px; opacity: 0.6; }
   .btn {
     appearance: none; cursor: pointer; font-family: inherit; font-size: 11px;
@@ -378,7 +386,10 @@ function getHtml(): string {
   .cols-item:hover { background: var(--vscode-list-hoverBackground); }
   .cols-item[draggable="true"] { cursor: grab; }
   .cols-item.row-dragging { opacity: 0.4; }
-  .cols-item.drop-row { box-shadow: inset 0 2px 0 var(--vscode-focusBorder, #3498db); }
+  .cols-item.drop-row {
+    box-shadow: inset 0 3px 0 #3b9eff;
+    background: rgba(59,158,255,0.22);
+  }
   .cols-grip { opacity: 0.45; font-size: 12px; cursor: grab; user-select: none; }
   .cols-item label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12.5px; }
   .cols-move button {
@@ -428,7 +439,10 @@ function getHtml(): string {
   th:hover { opacity: 1; }
   th.sorted { opacity: 1; }
   th.dragging { opacity: 0.4; }
-  th.drop-target { box-shadow: inset 3px 0 0 var(--vscode-focusBorder, #3498db); }
+  th.drop-target {
+    box-shadow: inset 4px 0 0 #3b9eff;
+    background: rgba(59,158,255,0.22) !important;
+  }
   th[draggable="true"] { cursor: pointer; }
   .sort-ind { font-size: 10px; opacity: 0.9; }
   tbody tr:nth-child(even) td { background: rgba(128,128,128,0.05); }
@@ -465,7 +479,8 @@ function getHtml(): string {
     <span id="changes" class="pill chg hidden"></span>
     <span class="grow"></span>
     <span id="ts" class="ts"></span>
-    <button id="refresh" class="btn" title="Re-read config and refresh">⟳ Refresh</button>
+    <button id="pause" class="btn" title="Pause/resume auto-refresh on each stop">⏸ Pause</button>
+    <button id="refresh" class="btn" title="Re-read config and refresh now">⟳ Refresh</button>
   </div>
 
   <div class="tabs" id="tabs"></div>
@@ -487,6 +502,21 @@ function getHtml(): string {
   document.getElementById('refresh').addEventListener('click', () => {
     vscodeApi.postMessage({ type: 'refresh' });
   });
+
+  let paused = ${paused};
+  const pauseBtn = document.getElementById('pause');
+  function updatePauseUI() {
+    pauseBtn.textContent = paused ? '▶ Resume' : '⏸ Pause';
+    pauseBtn.title = paused ? 'Resume auto-refresh on each stop' : 'Pause auto-refresh on each stop';
+    if (paused) { statusEl.textContent = 'paused'; statusEl.className = 'pill paused'; }
+  }
+  pauseBtn.addEventListener('click', () => {
+    paused = !paused;
+    vscodeApi.postMessage({ type: 'setPaused', paused: paused });
+    if (!paused) { statusEl.textContent = '—'; statusEl.className = 'pill'; }
+    updatePauseUI();
+  });
+  updatePauseUI();
 
   function cap(s) { s = String(s); return s.length ? s[0].toUpperCase() + s.slice(1) : s; }
   function idxOf(name) { return currentNames.indexOf(name); }
@@ -875,8 +905,7 @@ function getHtml(): string {
   window.addEventListener('message', e => {
     const m = e.data;
     if (m.type === 'update') {
-      statusEl.textContent = 'stopped';
-      statusEl.className = 'pill';
+      if (!paused) { statusEl.textContent = 'stopped'; statusEl.className = 'pill'; }
       tsEl.textContent = m.ts ? ('updated ' + m.ts) : '';
       const list = Array.isArray(m.sections) ? m.sections : [];
       ensureLayout(list.map(s => s.name));
@@ -888,8 +917,7 @@ function getHtml(): string {
       if (changed > 0) { chEl.textContent = changed + ' changed'; chEl.classList.remove('hidden'); }
       else chEl.classList.add('hidden');
     } else if (m.type === 'running') {
-      statusEl.textContent = 'running…';
-      statusEl.className = 'pill run';
+      if (!paused) { statusEl.textContent = 'running…'; statusEl.className = 'pill run'; }
     }
   });
 </script>

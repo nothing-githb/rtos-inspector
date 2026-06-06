@@ -2,6 +2,19 @@
 
 All notable changes to the **RTOS Inspector** extension are documented here.
 
+## [0.9.0] - 2026-06-06
+
+### Added
+- **Pause / Resume** toolbar button. When paused, the panel no longer
+  auto-refreshes (or queries GDB) on each stop — useful when you don't need it
+  always on. The **Refresh** button still does a one-shot update, and the choice
+  persists per workspace.
+
+### Changed
+- Drag-to-reorder drop indicators are now a bolder **blue** line with a light
+  blue tint (both column headers and the Columns menu), so the drop position is
+  much clearer.
+
 ## [0.8.0] - 2026-06-06
 
 ### Changed

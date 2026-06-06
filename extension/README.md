@@ -29,6 +29,8 @@ by hand in the debugger.
 - **Refresh on demand or on change.** A **Refresh** button re-reads
   `rtos-inspector.json` without restarting the debugger, and the panel also refreshes
   automatically when the config file changes on disk (while stopped).
+- **Pause / Resume.** Stop auto-refreshing (and querying GDB) on each stop when
+  you don't need it; Refresh still works on demand. Remembered per workspace.
 - **Change highlighting.** Values that changed since the previous stop are
   highlighted (with ▲/▼ for numeric deltas), a "N changed" badge shows the total,
   and tabs that changed in the background flag their count.

@@ -2,7 +2,7 @@
   "name": "rtos-inspector",
   "displayName": "RTOS Inspector",
   "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "HALISTAHASAHIN",
   "license": "MIT",
   "icon": "icon.png",
