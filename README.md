@@ -12,7 +12,7 @@ your own threading primitives instead of using `pthread`.
 What gets shown is driven entirely by a `rtos-inspector.json` file you write — the
 extension knows nothing about your structs.
 
-> Repository: https://github.com/nothing-githb/RtosView
+> Repository: https://github.com/nothing-githb/rtos-inspector
 
 ## Features
 
