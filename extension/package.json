@@ -1,13 +1,13 @@
 {
   "name": "rtos-inspector",
   "displayName": "RTOS Inspector",
-  "description": "Inspect your own custom thread and semaphore structures while debugging C with GDB. Config-driven, read-only, shown in a tabbed Webview panel.",
+  "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
   "version": "0.6.0",
   "publisher": "HALISTAHASAHIN",
   "license": "MIT",
   "icon": "icon.png",
   "author": {
-    "name": "Halis"
+    "name": "Halis Taha Sahin"
   },
   "homepage": "https://github.com/nothing-githb/rtos-inspector#readme",
   "repository": {
@@ -28,11 +28,18 @@
     "gdb",
     "cppdbg",
     "debug",
+    "embedded",
     "rtos",
     "thread",
     "semaphore",
-    "embedded",
-    "scheduler"
+    "mutex",
+    "queue",
+    "linked-list",
+    "struct",
+    "data-structures",
+    "visualize",
+    "c",
+    "c++"
   ],
   "galleryBanner": {
     "color": "#1E212C",

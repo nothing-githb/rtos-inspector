@@ -1,18 +1,26 @@
 # RTOS Inspector
 
-**A VS Code extension that visualizes your *own* RTOS thread and semaphore
-structures while debugging C with GDB.**
+**Visualize your own C/C++ data structures as live tables while debugging with GDB.**
 
-When your GDB (`cppdbg`) session stops, RTOS Inspector walks the global data
-structures *you* describe — custom Thread Control Blocks, semaphore lists,
-scheduler tables — and renders them in a clean, tabbed Webview panel. It is
-built for hobby RTOS kernels, schedulers and embedded projects where you roll
-your own threading primitives instead of using `pthread`.
+RTOS Inspector turns the in-memory data structures of *your* program — linked
+lists and arrays of structs such as thread control blocks, semaphores, mutexes,
+ready/blocked queues, timers, memory free-lists, or any node list — into clean,
+sortable tables in a VS Code panel, refreshed every time the debugger stops.
 
-What gets shown is driven entirely by a `rtos-inspector.json` file you write — the
-extension knows nothing about your structs.
+You describe what to walk in a small JSON file (`rtos-inspector.json`); the
+extension knows nothing about your types, so it works with any C/C++ codebase —
+bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at
+embedded / RTOS developers but useful for any structures you'd otherwise expand
+by hand in the debugger.
 
 > Repository: https://github.com/nothing-githb/rtos-inspector
+
+## Typical uses
+
+- Inspect an RTOS scheduler's **thread / TCB** list, **semaphore** / **mutex**
+  tables, or ready / blocked queues.
+- Walk any **linked list** or **array of structs** in plain C/C++ code.
+- Watch values **change between stops** — state transitions, counters, refcounts.
 
 ## Features
 
@@ -48,7 +56,7 @@ extension knows nothing about your structs.
 
 ## Quick start
 
-1. Debug your C program with `cppdbg` (GDB).
+1. Debug your C/C++ program with `cppdbg` (GDB).
 2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
 3. Run **“RTOS Inspector: Open Panel”** from the Command Palette.
 4. When you hit a breakpoint the panel fills in; on `continue` it shows
@@ -56,7 +64,11 @@ extension knows nothing about your structs.
 
 ## Configuration
 
-Each section (`threads`, `semaphores`) uses the same fields:
+You define up to two **sections**; each walks a linked list or an array of your
+structs and becomes its own sortable table / tab. The section keys are `threads`
+and `semaphores` — these are just the two tab labels, so point them at whatever
+collections you like (a thread list and a mutex list, two arbitrary node lists,
+etc.). Each section uses the same fields:
 
 | Field    | Meaning |
 |----------|---------|
@@ -99,6 +111,10 @@ Each section (`threads`, `semaphores`) uses the same fields:
   }
 }
 ```
+
+> The same mechanism fits any struct collection — point a section at a mutex
+> list, a ready queue, or a memory free-list (`linked_list` or `array` mode) and
+> label the columns with any GDB expressions.
 
 ### Settings
 

@@ -1,15 +1,17 @@
 # RTOS Inspector
 
-**Inspect your own thread and semaphore structures while debugging C with GDB.**
+**Visualize your own C/C++ data structures as live tables while debugging with GDB.**
 
-When your GDB (`cppdbg`) session stops, RTOS Inspector walks *your* global data
-structures — custom Thread Control Blocks, semaphore lists, scheduler tables —
-and renders them in a clean, tabbed Webview panel. It is built for hobby RTOS
-kernels, schedulers and embedded projects where you roll your own threading
-primitives instead of using `pthread`.
+When your GDB (`cppdbg`) session stops, RTOS Inspector walks the data structures
+*you* describe — linked lists and arrays of structs such as thread control
+blocks, semaphores, mutexes, ready/blocked queues, timers, free-lists, or any
+node list — and renders them as clean, sortable tables in a tabbed panel.
 
-What gets shown is driven entirely by a `rtos-inspector.json` file you write — the
-extension knows nothing about your structs.
+What gets shown is driven entirely by a `rtos-inspector.json` file you write, so
+the extension knows nothing about your types and works with any C/C++ codebase —
+bare-metal, a hobby or commercial RTOS, or plain application code. Aimed at
+embedded / RTOS developers, but handy for any structures you'd otherwise expand
+by hand in the debugger.
 
 ## Features
 
@@ -36,9 +38,9 @@ extension knows nothing about your structs.
   all — enabling one fetches its data on the spot.
 - **Read-only & safe.** RTOS Inspector only *reads* globals — it never calls
   functions, so your program state is never disturbed.
-- **Readable UI.** Thread `State` becomes a colored badge
-  (RUNNING / READY / BLOCKED / WAITING); semaphore `Count == 0` is flagged red
-  and `Waiting > 0` amber, with a summary line per tab.
+- **Readable UI.** Recognized columns get automatic styling: a `State` column
+  becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0`
+  is flagged red and `Waiting > 0` amber, with a summary line per tab.
 
 ## Requirements
 
@@ -48,7 +50,7 @@ extension knows nothing about your structs.
 
 ## Usage
 
-1. Debug your C program with `cppdbg` (GDB).
+1. Debug your C/C++ program with `cppdbg` (GDB).
 2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
 3. Run **“RTOS Inspector: Open Panel”** from the Command Palette.
 4. When you hit a breakpoint the panel fills in; on `continue` it shows
@@ -57,7 +59,10 @@ extension knows nothing about your structs.
 
 ## Configuration schema
 
-Each section (`threads`, `semaphores`) uses the same fields:
+You define up to two **sections**; each walks a linked list or an array of your
+structs and becomes its own sortable table / tab. The keys are `threads` and
+`semaphores` (just the two tab labels) — point them at any collections you like.
+Each section uses the same fields:
 
 | Field    | Meaning |
 |----------|---------|
@@ -117,6 +122,10 @@ An `array`-mode example:
   }
 }
 ```
+
+> The two sections can hold **any** struct collection — a mutex list, a ready
+> queue, a free-list, etc. — in either mode. Column labels and expressions are
+> entirely up to you.
 
 ### Notes on `expr`
 
