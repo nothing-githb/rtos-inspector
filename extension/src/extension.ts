@@ -409,6 +409,8 @@ function getHtml(): string {
   }
   th:hover { opacity: 1; }
   th.sorted { opacity: 1; }
+  th.dragging { opacity: 0.4; }
+  th[draggable="true"] { cursor: pointer; }
   .sort-ind { font-size: 10px; opacity: 0.9; }
   tbody tr:nth-child(even) td { background: rgba(128,128,128,0.05); }
   tbody tr:hover td { background: var(--vscode-list-hoverBackground); }
@@ -588,7 +590,8 @@ function getHtml(): string {
     for (const c of columns) {
       const active = c === sortCol;
       const ind = active ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '';
-      h += '<th class="' + (active ? 'sorted' : '') + '" data-col="' + esc(c) + '" title="Sort by ' + esc(c) + '">' +
+      h += '<th class="' + (active ? 'sorted' : '') + '" data-col="' + esc(c) + '" draggable="true" ' +
+        'title="Click: sort  ·  Drag: reorder  ·  Right-click: columns">' +
         esc(c) + '<span class="sort-ind">' + ind + '</span></th>';
     }
     h += '</tr></thead><tbody>';
@@ -680,17 +683,75 @@ function getHtml(): string {
     return ch.count;
   }
 
-  // Başlık tıklaması → sıralama (event delegation, bir kez kurulur)
+  // Başlık: tıkla→sırala, sürükle→yer değiştir, sağ-tık→sütun menüsü
   for (const name of ['threads', 'semaphores']) {
-    document.getElementById('pane-' + name).addEventListener('click', e => {
+    const pane = document.getElementById('pane-' + name);
+    let dragCol = null;
+    let suppressClick = false;
+
+    pane.addEventListener('click', e => {
       const th = e.target.closest('th[data-col]');
       if (!th) return;
+      if (suppressClick) { suppressClick = false; return; }
       const st = secState[name];
       if (!st) return;
       const col = th.dataset.col;
       if (st.sortCol === col) st.sortDir = st.sortDir === 'asc' ? 'desc' : 'asc';
       else { st.sortCol = col; st.sortDir = 'asc'; }
       paint(name);
+    });
+
+    pane.addEventListener('dragstart', e => {
+      const th = e.target.closest('th[data-col]');
+      if (!th) return;
+      suppressClick = false;
+      dragCol = th.dataset.col;
+      th.classList.add('dragging');
+      if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragCol); }
+    });
+    pane.addEventListener('dragover', e => {
+      if (dragCol === null) return;
+      const th = e.target.closest('th[data-col]');
+      if (!th) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+    pane.addEventListener('drop', e => {
+      if (dragCol === null) return;
+      const th = e.target.closest('th[data-col]');
+      if (!th) return;
+      e.preventDefault();
+      const target = th.dataset.col;
+      const st = secState[name];
+      if (st && target !== dragCol) {
+        const from = st.order.indexOf(dragCol), to = st.order.indexOf(target);
+        if (from !== -1 && to !== -1) {
+          st.order.splice(from, 1);
+          st.order.splice(to, 0, dragCol);
+          afterColChange(name, false);
+        }
+      }
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 60);
+      dragCol = null;
+    });
+    pane.addEventListener('dragend', () => {
+      for (const x of pane.querySelectorAll('th.dragging')) x.classList.remove('dragging');
+      dragCol = null;
+    });
+
+    pane.addEventListener('contextmenu', e => {
+      const th = e.target.closest('th[data-col]');
+      if (!th || !secState[name]) return;
+      e.preventDefault();
+      for (const n of ['threads', 'semaphores'])
+        document.getElementById('cols-' + n).classList.add('hidden');
+      buildColsMenu(name);
+      const menu = document.getElementById('cols-' + name);
+      menu.style.position = 'fixed';
+      menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+      menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
+      menu.classList.remove('hidden');
     });
   }
 
@@ -704,7 +765,12 @@ function getHtml(): string {
       // diğer menüleri kapat
       for (const n of ['threads', 'semaphores'])
         document.getElementById('cols-' + n).classList.add('hidden');
-      if (willOpen) { buildColsMenu(name); menu.classList.remove('hidden'); }
+      if (willOpen) {
+        // sağ-tık'tan kalan sabit konumu sıfırla → CSS'teki .cols-bar altına otursun
+        menu.style.position = ''; menu.style.left = ''; menu.style.top = '';
+        buildColsMenu(name);
+        menu.classList.remove('hidden');
+      }
     });
     menu.addEventListener('click', e => {
       e.stopPropagation();

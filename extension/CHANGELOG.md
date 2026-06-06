@@ -2,6 +2,14 @@
 
 All notable changes to the **SyncWatch** extension are documented here.
 
+## [0.6.0] - 2026-06-06
+
+### Added
+- **Drag-and-drop column reorder.** Drag a column header to move it (the ↑/↓
+  menu buttons remain for keyboard/discoverability).
+- **Right-click a column header** to open the columns menu at the cursor for
+  quick show/hide.
+
 ## [0.5.0] - 2026-06-06
 
 ### Added
