@@ -1,19 +1,19 @@
-# SyncWatch
+# RTOS Inspector
 
 **Inspect your own thread and semaphore structures while debugging C with GDB.**
 
-When your GDB (`cppdbg`) session stops, SyncWatch walks *your* global data
+When your GDB (`cppdbg`) session stops, RTOS Inspector walks *your* global data
 structures — custom Thread Control Blocks, semaphore lists, scheduler tables —
 and renders them in a clean, tabbed Webview panel. It is built for hobby RTOS
 kernels, schedulers and embedded projects where you roll your own threading
 primitives instead of using `pthread`.
 
-What gets shown is driven entirely by a `syncwatch.json` file you write — the
+What gets shown is driven entirely by a `rtos-inspector.json` file you write — the
 extension knows nothing about your structs.
 
 ## Features
 
-- **Config-driven.** Point SyncWatch at any global expression; it does not
+- **Config-driven.** Point RTOS Inspector at any global expression; it does not
   assume any layout. No code changes to your program.
 - **Two traversal modes.**
   - `linked_list` — start at a head pointer, follow a `next` field until NULL.
@@ -25,7 +25,7 @@ extension knows nothing about your structs.
 - **Sortable columns.** Click any column header to sort (numeric/hex columns
   sort numerically, text alphabetically); the choice persists across stops.
 - **Refresh on demand or on change.** A **Refresh** button re-reads
-  `syncwatch.json` without restarting the debugger, and the panel also refreshes
+  `rtos-inspector.json` without restarting the debugger, and the panel also refreshes
   automatically when the config file changes on disk (while stopped).
 - **Change highlighting.** Values that changed since the previous stop are
   highlighted (with ▲/▼ for numeric deltas), a "N changed" badge shows the total,
@@ -34,7 +34,7 @@ extension knows nothing about your structs.
   header (or use the "▦ Columns" button) to show/hide columns. Order and
   visibility are saved per workspace. Hidden columns are **not** read from GDB at
   all — enabling one fetches its data on the spot.
-- **Read-only & safe.** SyncWatch only *reads* globals — it never calls
+- **Read-only & safe.** RTOS Inspector only *reads* globals — it never calls
   functions, so your program state is never disturbed.
 - **Readable UI.** Thread `State` becomes a colored badge
   (RUNNING / READY / BLOCKED / WAITING); semaphore `Count == 0` is flagged red
@@ -49,8 +49,8 @@ extension knows nothing about your structs.
 ## Usage
 
 1. Debug your C program with `cppdbg` (GDB).
-2. Put a `syncwatch.json` at your workspace root (see the schema below).
-3. Run **“SyncWatch: Open Panel”** from the Command Palette.
+2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
+3. Run **“RTOS Inspector: Open Panel”** from the Command Palette.
 4. When you hit a breakpoint the panel fills in; on `continue` it shows
    "running…", and it refreshes again on the next stop. Switch between the
    **Threads** and **Semaphores** tabs at the top.
@@ -69,7 +69,7 @@ Each section (`threads`, `semaphores`) uses the same fields:
 | `max`    | Safety upper bound (default `1024`) |
 | `fields` | List of `{ "label", "expr" }` → the columns to display |
 
-### Example `syncwatch.json`
+### Example `rtos-inspector.json`
 
 ```json
 {
@@ -128,12 +128,12 @@ as addresses, integers as numbers.
 
 | Setting                | Default            | Description |
 |------------------------|--------------------|-------------|
-| `syncwatch.configPath` | `syncwatch.json`   | Path to the config file, relative to the workspace root. |
-| `syncwatch.debugTypes` | `["cppdbg"]`       | Debug adapter types the tracker attaches to. |
+| `rtosInspector.configPath` | `rtos-inspector.json`   | Path to the config file, relative to the workspace root. |
+| `rtosInspector.debugTypes` | `["cppdbg"]`       | Debug adapter types the tracker attaches to. |
 
 ## How it works
 
-SyncWatch registers a debug adapter tracker for the configured debug types and
+RTOS Inspector registers a debug adapter tracker for the configured debug types and
 listens for `stopped`/`continued` events. On stop, it grabs the top stack frame
 and issues `-exec print …` commands through the debug adapter's `evaluate`
 request, cleaning GDB's `$N =` / prompt noise from the output. Linked lists are

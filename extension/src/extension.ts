@@ -33,7 +33,7 @@ let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: { threads?: ColPref; semaphores?: ColPref } = {};
-const COLPREF_KEY = 'syncwatch.columnPrefs';
+const COLPREF_KEY = 'rtosInspector.columnPrefs';
 
 // ---------------------------------------------------------------------------
 // Aktivasyon
@@ -42,14 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
   extContext = context;
   columnPrefs = context.workspaceState.get<{ threads?: ColPref; semaphores?: ColPref }>(COLPREF_KEY) ?? {};
   context.subscriptions.push(
-    vscode.commands.registerCommand('syncwatch.open', () => {
+    vscode.commands.registerCommand('rtosInspector.open', () => {
       openPanel(context);
       if (lastStopped) refresh(lastStopped.session, lastStopped.threadId);
     })
   );
 
   const types: string[] =
-    vscode.workspace.getConfiguration('syncwatch').get('debugTypes') ?? ['cppdbg'];
+    vscode.workspace.getConfiguration('rtosInspector').get('debugTypes') ?? ['cppdbg'];
 
   for (const type of types) {
     context.subscriptions.push(
@@ -76,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
   setupConfigWatcher(context);
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('syncwatch.configPath')) setupConfigWatcher(context);
+      if (e.affectsConfiguration('rtosInspector.configPath')) setupConfigWatcher(context);
     })
   );
 }
@@ -89,7 +89,7 @@ function setupConfigWatcher(context: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return;
   const rel: string =
-    vscode.workspace.getConfiguration('syncwatch').get('configPath') ?? 'syncwatch.json';
+    vscode.workspace.getConfiguration('rtosInspector').get('configPath') ?? 'rtos-inspector.json';
   configWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(folder, rel)
   );
@@ -145,13 +145,13 @@ function loadConfig(): SyncCfg | undefined {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return undefined;
   const rel: string =
-    vscode.workspace.getConfiguration('syncwatch').get('configPath') ?? 'syncwatch.json';
+    vscode.workspace.getConfiguration('rtosInspector').get('configPath') ?? 'rtos-inspector.json';
   const file = path.join(folder.uri.fsPath, rel);
   try {
     const text = fs.readFileSync(file, 'utf8');
     return JSON.parse(text) as SyncCfg;
   } catch {
-    vscode.window.showWarningMessage(`SyncWatch: could not read config (${file})`);
+    vscode.window.showWarningMessage(`RTOS Inspector: could not read config (${file})`);
     return undefined;
   }
 }
@@ -287,7 +287,7 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
 function openPanel(context: vscode.ExtensionContext) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside); return; }
   panel = vscode.window.createWebviewPanel(
-    'syncwatch', 'SyncWatch', vscode.ViewColumn.Beside,
+    'rtosInspector', 'RTOS Inspector', vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true }
   );
   panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
@@ -441,7 +441,7 @@ function getHtml(): string {
 </head>
 <body>
   <div class="topbar">
-    <h1>SyncWatch</h1>
+    <h1>RTOS Inspector</h1>
     <span id="status" class="pill">—</span>
     <span id="changes" class="pill chg hidden"></span>
     <span class="grow"></span>

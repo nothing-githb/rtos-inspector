@@ -1,6 +1,6 @@
 {
-  "name": "syncwatch",
-  "displayName": "SyncWatch",
+  "name": "rtos-inspector",
+  "displayName": "RTOS Inspector",
   "description": "Inspect your own custom thread and semaphore structures while debugging C with GDB. Config-driven, read-only, shown in a tabbed Webview panel.",
   "version": "0.6.0",
   "publisher": "HALISTAHASAHIN",
@@ -45,19 +45,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "syncwatch.open",
-        "title": "SyncWatch: Open Panel"
+        "command": "rtosInspector.open",
+        "title": "RTOS Inspector: Open Panel"
       }
     ],
     "configuration": {
-      "title": "SyncWatch",
+      "title": "RTOS Inspector",
       "properties": {
-        "syncwatch.configPath": {
+        "rtosInspector.configPath": {
           "type": "string",
-          "default": "syncwatch.json",
+          "default": "rtos-inspector.json",
           "description": "Path to the config file, relative to the workspace root."
         },
-        "syncwatch.debugTypes": {
+        "rtosInspector.debugTypes": {
           "type": "array",
           "items": {
             "type": "string"
