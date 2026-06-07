@@ -254,7 +254,7 @@ async function collectSection(
     for (let i = 0; i < Math.min(count, max); i++) {
       // eleman: ((cast*)root)[i]; field'a erişmeden ÖNCE wrap ile sarmalanır
       let elem = `${base}[${i}]`;
-      if (cfg.wrap) elem = cfg.wrap.split('${expr}').join('(' + elem + ')');
+      if (cfg.wrap) elem = '(' + cfg.wrap.split('${expr}').join('(' + elem + ')') + ')'; // çıktıyı sar: (wrap)<access>field
       const row: Row = {};
       for (const f of cfg.fields) {
         const v = await gdbExec(session, `print ${elem}${access}${f.expr}`, frameId);
@@ -290,7 +290,7 @@ async function collectSection(
       const fromIdx = idx;
       // eleman: base[idx]; field'a erişmeden ÖNCE wrap ile sarmalanır
       let elem = `${base}[${idx}]`;
-      if (cfg.wrap) elem = cfg.wrap.split('${expr}').join('(' + elem + ')');
+      if (cfg.wrap) elem = '(' + cfg.wrap.split('${expr}').join('(' + elem + ')') + ')'; // çıktıyı sar: (wrap)<access>field
       const row: Row = {};
       for (const f of cfg.fields) {
         const v = await gdbExec(session, `print ${elem}${access}${f.expr}`, frameId);
@@ -314,7 +314,7 @@ async function collectSection(
       if (isNull(cur)) { reason = 'reached NULL'; break; }
       // node (cursor); field'a erişmeden ÖNCE wrap ile sarmalanır
       let elem = cursor;
-      if (cfg.wrap) elem = cfg.wrap.split('${expr}').join('(' + cursor + ')');
+      if (cfg.wrap) elem = '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')'; // çıktıyı sar: (wrap)->field
       const row: Row = {};
       for (const f of cfg.fields) {
         const v = await gdbExec(session, `print ${elem}->${f.expr}`, frameId);

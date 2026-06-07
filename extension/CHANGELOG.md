@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.18.2] - 2026-06-06
+
+### Fixed
+- The `wrap` output is now wrapped in parentheses before the field access is
+  appended (`(wrap)<access>field`). This prevents operator-precedence mis-parsing
+  for a `wrap` that dereferences — e.g. `"wrap": "*(${expr})"` now yields
+  `(*(elem)).field` instead of `*(elem).field` (which C parses as
+  `*((elem).field)`).
+
 ## [0.18.1] - 2026-06-06
 
 ### Fixed

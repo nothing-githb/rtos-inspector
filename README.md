@@ -111,7 +111,9 @@ section's JSON key is its tab label (`threads`, `semaphores`, `mutexes`,
 `wrap` transforms each element *before* its fields are read — useful when the
 element itself is a `void*` that must be cast. For an array of pointers
 (`void *slots[]`), `"wrap": "((widget_t *)${expr})"` with `"access": "->"` reads
-each element as `((widget_t *)(slots[i]))->field`.
+each element as `((widget_t *)(slots[i]))->field`. The wrap output is
+parenthesized before the field access, so a deref wrap like `*(${expr})` composes
+correctly (`(*(elem)).field`).
 
 ### Example `rtos-inspector.json`
 

@@ -229,7 +229,9 @@ as addresses, integers as numbers.
 A section can set `wrap` to transform each **element** before its fields are read
 (`${expr}` is the element). For an array of pointers behind a `void*`, use
 `"wrap": "((widget_t *)${expr})"` with `"access": "->"` → each element is read as
-`((widget_t *)(slots[i]))->field`.
+`((widget_t *)(slots[i]))->field`. The wrap output is parenthesized before the
+field access, so a deref wrap like `*(${expr})` composes correctly
+(`(*(elem)).field`).
 
 A value GDB cannot read (an inaccessible address, an error) or a NULL pointer
 (`0x0`) is shown as a muted `-`. A plain integer `0` is shown as `0`.
