@@ -2,6 +2,17 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.18.0] - 2026-06-06
+
+### Added
+- `${master}` (grouping) and `${selected}` (master–detail) placeholders now
+  resolve in a section's **`head`**, `count`, and `nil` too — not just `root`. An
+  `index_list` can therefore start its walk at a per-parent head, e.g.
+  `"head": "${master}->slot_head"`. Master–detail detection also triggers when
+  `${selected}` appears only in `head`/`count`. The demo gains a grouped
+  `procSlots` index-list (each process walks its own chain via
+  `${master}->slot_head`).
+
 ## [0.17.2] - 2026-06-06
 
 ### Changed

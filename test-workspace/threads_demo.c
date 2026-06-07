@@ -69,6 +69,7 @@ typedef struct process {
     tcb_t           *thread_list;   /* bu process'in thread'leri */
     ksem_t          *sem_list;      /* bu process'in semaphore'lari */
     kmutex_t        *mutex_list;    /* bu process'in mutex'leri */
+    int              slot_head;     /* bu process'in g_slot_pool icindeki index-zinciri basi */
     struct process  *next;
 } process_t;
 
@@ -203,15 +204,20 @@ int main(void)
     g_slots[1] = &g_widget_pool[1];
     g_slots[2] = &g_widget_pool[2];
 
-    /* index-linked: zincir 0 -> 2 -> 5 -> -1 ; gozler 1,3,4 bos (atlanir) */
+    /* index-linked havuz; iki ayri zincir (gozler index ile bagli) */
     g_slot_pool[0].id = 101; g_slot_pool[0].name = "alpha"; g_slot_pool[0].next = 2;
     g_slot_pool[2].id = 102; g_slot_pool[2].name = "beta";  g_slot_pool[2].next = 5;
     g_slot_pool[5].id = 103; g_slot_pool[5].name = "gamma"; g_slot_pool[5].next = -1;
-    g_slot_head = 0;
+    g_slot_head = 0;                 /* global zincir: 0 -> 2 -> 5 */
+    g_slot_pool[1].id = 201; g_slot_pool[1].name = "w-a";   g_slot_pool[1].next = 3;
+    g_slot_pool[3].id = 202; g_slot_pool[3].name = "w-b";   g_slot_pool[3].next = -1;
+    /* goz 4 bos kalir */
 
     /* master liste: 2 process, her biri kendi alt listeleriyle */
     process_t *p0 = mk_proc(1, "init",   a, s0, m0);
     process_t *p1 = mk_proc(2, "worker", c, s2, m1);
+    p0->slot_head = 0;   /* init  : 0 -> 2 -> 5  (alpha, beta, gamma) */
+    p1->slot_head = 1;   /* worker: 1 -> 3       (w-a, w-b) */
     p0->next = p1; p1->next = NULL;
     g_process_list = p0;
 

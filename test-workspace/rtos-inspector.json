@@ -105,5 +105,20 @@
       { "label": "Name", "expr": "name" },
       { "label": "Next", "expr": "next" }
     ]
+  },
+
+  "//procSlots": "grouped + index_list birlikte: her process'in g_slot_pool içindeki index-zinciri. head ${master}->slot_head ile o process'e göre başlar; processes altında ağaç olarak gruplanır.",
+  "procSlots": {
+    "groupBy": "processes",
+    "mode": "index_list",
+    "root": "g_slot_pool",
+    "head": "${master}->slot_head",
+    "next": "next",
+    "nil": "-1",
+    "access": ".",
+    "fields": [
+      { "label": "ID",   "expr": "id" },
+      { "label": "Name", "expr": "name" }
+    ]
   }
 }

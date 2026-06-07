@@ -185,8 +185,9 @@ details. For a process list whose processes each own their own sub-lists:
 ```
 
 Click a process row and the `threads` and `mutexes` tables show *that* process's
-lists. The first master row is selected automatically. Array detail sections may
-also use `${selected}` in `count` (e.g. `"count": "${selected}->n"`).
+lists. The first master row is selected automatically. `${selected}` may appear
+in `root`, `count`, `head`, or `nil` (e.g. an `index_list` detail with
+`"head": "${selected}->free_head"`).
 
 ### Grouping (tree, in the same tab)
 
@@ -213,6 +214,11 @@ The Semaphores tab then lists every process as a collapsible node with its own
 semaphores beneath; a **Flat view** button switches to an ungrouped list.
 (Grouping shows *all* parents at once in one tab; master–detail shows one
 selected parent's children across separate tabs — use whichever fits.)
+
+`${master}` may appear in `root`, `count`, **`head`**, or `nil` — so an
+`index_list` can start its walk at a per-parent head, e.g.
+`"head": "${master}->slot_head"`. (`${selected}` works in the same fields for
+master–detail.)
 
 ### Generic `void*` arrays
 

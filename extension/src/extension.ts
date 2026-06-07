@@ -408,7 +408,8 @@ async function buildSection(
 // Master-detail: ${selected} yer tutucusu
 // ---------------------------------------------------------------------------
 function isDetail(cfg: SectionCfg): boolean {
-  return typeof cfg.root === 'string' && cfg.root.indexOf('${selected}') !== -1;
+  const has = (s?: string) => typeof s === 'string' && s.indexOf('${selected}') !== -1;
+  return has(cfg.root) || has(cfg.head) || has(cfg.count);   // ${selected} root/head/count'ta olabilir
 }
 // Master satırın elemanını yeniden seçen ifade (tip-güvenli, adres/cast gerektirmez)
 function selectorExpr(cfg: SectionCfg, index: number): string {
@@ -468,7 +469,9 @@ async function buildGrouped(
       ...scfg,
       fields: effFields,
       root: substituteMaster(scfg.root, selExpr),
-      count: scfg.count ? substituteMaster(scfg.count, selExpr) : scfg.count
+      count: scfg.count ? substituteMaster(scfg.count, selExpr) : scfg.count,
+      head: scfg.head ? substituteMaster(scfg.head, selExpr) : scfg.head,
+      nil: scfg.nil ? substituteMaster(scfg.nil, selExpr) : scfg.nil
     };
     const rows = await collectSection(session, subCfg, frameId, '$rg_' + i + '_' + mi, name);
     const key = rowKeyAt(m.sec, mi) ?? String(mi);
@@ -543,7 +546,9 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
     const subCfg: SectionCfg = {
       ...scfg,
       root: substituteSel(scfg.root, selExpr),
-      count: scfg.count ? substituteSel(scfg.count, selExpr) : scfg.count
+      count: scfg.count ? substituteSel(scfg.count, selExpr) : scfg.count,
+      head: scfg.head ? substituteSel(scfg.head, selExpr) : scfg.head,
+      nil: scfg.nil ? substituteSel(scfg.nil, selExpr) : scfg.nil
     };
     sections.push(await buildSection(session, subCfg, frameId, '$ri_' + i, name));
   }

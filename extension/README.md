@@ -177,8 +177,10 @@ the row you click in a master section. For example, a `processes` master with
 }
 ```
 
-Clicking a process row fills `threads` with that process's thread list. `count`
-may also reference `${selected}` for array details.
+Clicking a process row fills `threads` with that process's thread list.
+`${selected}` may appear in `root`, `count`, `head`, or `nil` — e.g. an
+`index_list` detail with `"head": "${selected}->free_head"`. (For grouping, the
+same applies to `${master}`.)
 
 A `void*` dynamic-array example (give the element type with `cast`):
 
