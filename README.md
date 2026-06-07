@@ -53,6 +53,8 @@ by hand in the debugger.
   choice is remembered per workspace.
 - **Read-only & safe** — only *reads* globals; never calls functions, so program
   state is never disturbed.
+- **Leveled logs** — an *RTOS Inspector* Output channel logs at
+  trace/debug/info/warn/error; at `trace` every GDB query and result is shown.
 
 ## Requirements
 
@@ -213,6 +215,14 @@ tabs (via `${selected}`) and a standalone `timers` array tab — click a process
 row to drill into its lists. The `.vscode/{launch,tasks}.example.json` templates
 (copy to `launch.json`/`tasks.json` and set your toolchain path) include Cygwin
 GDB tips in comments.
+
+## Troubleshooting
+
+Open **View → Output → "RTOS Inspector"** (or run **"RTOS Inspector: Show Log"**)
+to see what the extension is doing. Raise the level with the gear icon or
+**"Developer: Set Log Level…"**: `debug` shows per-section row counts, the chosen
+columns and the resolved `${selected}` expression; `trace` logs every GDB command
+and its result — handy when a column is empty or a `root` doesn't resolve.
 
 ## License
 

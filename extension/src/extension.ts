@@ -31,6 +31,7 @@ interface ColPref { order: string[]; hidden: string[]; }
 // ---------------------------------------------------------------------------
 let panel: vscode.WebviewPanel | undefined;
 let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
+let log: vscode.LogOutputChannel;          // Output: seviyeli loglar (trace/debug/info/warn/error)
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: Record<string, ColPref> = {};
@@ -47,11 +48,18 @@ export function activate(context: vscode.ExtensionContext) {
   extContext = context;
   columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
   paused = context.workspaceState.get<boolean>(PAUSED_KEY) ?? false;
+
+  log = vscode.window.createOutputChannel('RTOS Inspector', { log: true });
+  context.subscriptions.push(log);
+  log.info('RTOS Inspector activated');
+
   context.subscriptions.push(
     vscode.commands.registerCommand('rtosInspector.open', () => {
+      log.debug('command: open panel');
       openPanel(context);
       if (lastStopped) refresh(lastStopped.session, lastStopped.threadId);
-    })
+    }),
+    vscode.commands.registerCommand('rtosInspector.showLog', () => log.show())
   );
 
   const types: string[] =
@@ -67,8 +75,10 @@ export function activate(context: vscode.ExtensionContext) {
               if (msg.event === 'stopped') {
                 const threadId = msg.body?.threadId ?? 0;
                 lastStopped = { session, threadId };
+                log?.debug(`debug stopped (thread ${threadId})${paused ? ' [paused — skipping refresh]' : ''}`);
                 if (!paused) refresh(session, threadId);
               } else if (msg.event === 'continued') {
+                log?.trace('debug continued');
                 if (!paused) panel?.webview.postMessage({ type: 'running' });
               }
             }
@@ -125,8 +135,11 @@ async function gdbExec(
       context: 'repl',
       frameId
     });
-    return (resp?.result ?? '').toString();
+    const out = (resp?.result ?? '').toString();
+    log?.trace(`gdb ▸ ${command}  ⇒  ${out.replace(/\s+/g, ' ').trim()}`);
+    return out;
   } catch (e: any) {
+    log?.trace(`gdb ▸ ${command}  ⇒  <error: ${e?.message ?? e}>`);
     return `<<error: ${e?.message ?? e}>>`;
   }
 }
@@ -155,8 +168,10 @@ function loadConfig(): SyncCfg | undefined {
   const file = path.join(folder.uri.fsPath, rel);
   try {
     const text = fs.readFileSync(file, 'utf8');
+    log?.debug(`config loaded: ${file}`);
     return JSON.parse(text) as SyncCfg;
-  } catch {
+  } catch (e: any) {
+    log?.warn(`could not read/parse config: ${file} — ${e?.message ?? e}`);
     vscode.window.showWarningMessage(`RTOS Inspector: could not read config (${file})`);
     return undefined;
   }
@@ -275,6 +290,7 @@ async function buildSection(
     .map(l => cfg.fields.find(f => f.label === l))
     .filter((f): f is FieldCfg => !!f);
   const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor);
+  log?.debug(`section "${name}" (${cfg.mode}, root=${cfg.root}): ${rows.length} row(s); active=[${eff.active.join(', ')}]`);
   return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows) };
 }
 
@@ -319,6 +335,7 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
 
   const secs = extractSections(cfg);
   const hasDetail = secs.some(s => isDetail(s.cfg));
+  log?.info(`refresh: ${secs.length} section(s) [${secs.map(s => s.name).join(', ')}]${hasDetail ? ' (master-detail)' : ''}`);
 
   // 1. geçiş: master/bağımsız bölümleri (detay olmayan) topla + satır seçim ifadeleri
   const masters: Record<string, { sec: Section; selExprs: string[] }> = {};
@@ -344,6 +361,7 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
       if (idx < 0) { idx = 0; selectedKey = rowKeyAt(m.sec, 0); }
       selExpr = m.selExprs[idx];
       m.sec.selectedKey = selectedKey;
+      log?.info(`master selection: ${selectedMaster}[key=${selectedKey}] ⇒ \${selected} = ${selExpr}`);
     }
   }
 
@@ -385,8 +403,9 @@ function openPanel(context: vscode.ExtensionContext) {
   panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
   panel.webview.onDidReceiveMessage(
     (msg: any) => {
-      if (msg?.type === 'refresh') { doRefresh(); return; }
+      if (msg?.type === 'refresh') { log?.debug('webview: manual refresh'); doRefresh(); return; }
       if (msg?.type === 'setColumns' && typeof msg.section === 'string' && msg.section) {
+        log?.debug(`webview: setColumns ${msg.section} hidden=[${(msg.hidden || []).join(', ')}] refetch=${!!msg.refetch}`);
         columnPrefs[msg.section] = {
           order: Array.isArray(msg.order) ? msg.order : [],
           hidden: Array.isArray(msg.hidden) ? msg.hidden : []
@@ -396,11 +415,13 @@ function openPanel(context: vscode.ExtensionContext) {
         if (msg.refetch) doRefresh();
       } else if (msg?.type === 'setPaused') {
         paused = !!msg.paused;
+        log?.info(`webview: ${paused ? 'paused' : 'resumed'}`);
         extContext?.workspaceState.update(PAUSED_KEY, paused);
         if (!paused && lastStopped) refresh(lastStopped.session, lastStopped.threadId);
       } else if (msg?.type === 'selectMaster' && typeof msg.section === 'string') {
         selectedMaster = msg.section;
         selectedKey = typeof msg.key === 'string' ? msg.key : undefined;
+        log?.debug(`webview: selectMaster ${selectedMaster}[key=${selectedKey}]`);
         doRefresh();   // detay bölümleri seçili elemana göre yeniden çek
       }
     },

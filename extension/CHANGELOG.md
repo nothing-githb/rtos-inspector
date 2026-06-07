@@ -2,6 +2,15 @@
 
 All notable changes to the **RTOS Inspector** extension are documented here.
 
+## [0.11.0] - 2026-06-06
+
+### Added
+- **Leveled logging** to an *RTOS Inspector* Output channel
+  (trace / debug / info / warn / error). Pick the level from the Output panel's
+  gear or via "Developer: Set Log Level…". At `trace`, every GDB command and its
+  result is logged; `debug` shows section/column/selection activity. A new
+  command **"RTOS Inspector: Show Log"** opens the channel.
+
 ## [0.10.0] - 2026-06-06
 
 ### Added

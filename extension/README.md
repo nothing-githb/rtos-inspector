@@ -45,6 +45,10 @@ by hand in the debugger.
   with that element's lists. The first master row is auto-selected.
 - **Read-only & safe.** RTOS Inspector only *reads* globals — it never calls
   functions, so your program state is never disturbed.
+- **Leveled logging.** An *RTOS Inspector* Output channel logs at
+  trace/debug/info/warn/error (set the level via the gear or
+  "Developer: Set Log Level…"); `trace` shows every GDB command and result. Run
+  "RTOS Inspector: Show Log" to open it.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column
   becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0`
   is flagged red and `Waiting > 0` amber, with a summary line per tab.
