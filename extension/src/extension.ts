@@ -1039,9 +1039,9 @@ function getHtml(): string {
     if (st.sec.grouped) h += '<button class="btn grp-toggle">' + (st.flat ? '⊞ Tree' : '☰ Flat') + '</button>';
     else if (st.changeCount > 0) h += '<button class="btn chg-only' + (st.changedOnly ? ' on' : '') + '" title="Show only changed rows">Δ Changed</button>';
     h += '<span class="grow"></span>';
+    h += '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>';
     h += '<button class="btn copy-csv" title="Copy table as CSV">⧉ CSV</button>';
     h += '<button class="btn copy-md" title="Copy table as Markdown">⧉ MD</button>';
-    h += '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>';
     h += '</div>';
     return h;
   }

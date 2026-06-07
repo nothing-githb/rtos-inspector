@@ -2,6 +2,12 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.25.1] - 2026-06-07
+
+### Changed
+- Moved the **▦ Columns** button to the left of **⧉ CSV** / **⧉ MD** in the table
+  toolbar.
+
 ## [0.25.0] - 2026-06-07
 
 ### Changed
