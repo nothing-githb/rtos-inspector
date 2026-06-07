@@ -56,6 +56,8 @@ by hand in the debugger.
   choice is remembered per workspace.
 - **Read-only & safe** — only *reads* globals; never calls functions, so program
   state is never disturbed.
+- **Tidy empties** — an unreadable/inaccessible value or a NULL pointer (`0x0`)
+  shows as a muted `-` (a plain integer `0` stays `0`).
 - **Leveled logs** — an *Debug Inspector* Output channel logs at
   trace/debug/info/warn/error; at `trace` every GDB query and result is shown.
 

@@ -203,6 +203,9 @@ A section can set `wrap` to transform each **element** before its fields are rea
 `"wrap": "((widget_t *)${expr})"` with `"access": "->"` → each element is read as
 `((widget_t *)(slots[i]))->field`.
 
+A value GDB cannot read (an inaccessible address, an error) or a NULL pointer
+(`0x0`) is shown as a muted `-`. A plain integer `0` is shown as `0`.
+
 ## Extension settings
 
 | Setting                | Default            | Description |

@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.15.1] - 2026-06-06
+
+### Changed
+- Cells whose value is **unreadable** (GDB could not access the address / errored)
+  or a **NULL pointer** (`0x0`) now display as a muted `-`. A plain integer `0`
+  is left as-is (so e.g. `Count = 0` still shows its red highlight). Raw values
+  are unchanged underneath, so sorting/summaries/change-detection still work.
+
 ## [0.15.0] - 2026-06-06
 
 ### Added

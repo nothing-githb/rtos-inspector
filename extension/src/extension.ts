@@ -636,6 +636,7 @@ function getHtml(): string {
   tbody tr.selrow td { cursor: pointer; }
   tbody tr.selected td { background: rgba(59,158,255,0.16) !important; }
   tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 #3b9eff; }
+  .dash { opacity: 0.4; }
   .grp-bar { margin: 10px 2px 6px; }
   .grp-toggle { font-size: 11px; }
   tr.grphdr td {
@@ -780,8 +781,20 @@ function getHtml(): string {
   }
   function asNum(v){ const m=String(v).match(/-?\\d+/); return m?parseInt(m[0],10):NaN; }
 
+  // Erişilemeyen (gdb hata/erişim yok) veya NULL pointer (0x0) -> "-"
+  function isUnreadable(v) {
+    const s = v == null ? '' : String(v);
+    return /^<<error/i.test(s) || /cannot access memory|no symbol|optimized out|<error reading/i.test(s);
+  }
+  function isNullPtr(v) {
+    const t = (v == null ? '' : String(v)).trim();
+    return /^(\([^)]*\)\s*)?0x0+$/.test(t);   // 0x0, 0x00, "(tcb_t *) 0x0"
+  }
+  function isDash(v) { return isUnreadable(v) || isNullPtr(v); }
+
   // Stiller artık bölüm türüne değil, KOLON ADINA göre uygulanır (generic)
   function cell(col, val) {
+    if (isDash(val)) return '<span class="dash" title="' + esc(val) + '">-</span>';
     const lc = String(col).toLowerCase();
     if (lc.includes('state') || lc.includes('durum'))
       return '<span class="badge ' + stateClass(val) + '">' + esc(val) + '</span>';
@@ -871,7 +884,10 @@ function getHtml(): string {
       if (isChg) classes.push('changed');
       const clsAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
       let inner = cell(c, row[c] ?? '');
-      if (isChg) inner += '<span class="old" title="previous value">' + esc(changed[ck]) + '</span>';
+      if (isChg) {
+        const ov = isDash(changed[ck]) ? '-' : changed[ck];
+        inner += '<span class="old" title="previous value">' + esc(ov) + '</span>';
+      }
       h += '<td' + clsAttr + '>' + inner + '</td>';
     }
     return h + '</tr>';
