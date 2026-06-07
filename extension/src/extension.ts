@@ -297,7 +297,10 @@ async function collectSection(
         row[f.label] = cleanValue(v);
       }
       rows.push(row);
-      const nextExpr = `${elem}${access}${cfg.next}`;
+      // next: ${expr} (eleman) içeren bir şablon olabilir (wrap gibi); yoksa elem<access>next
+      const nextExpr = (cfg.next && cfg.next.indexOf('${expr}') !== -1)
+        ? cfg.next.split('${expr}').join('(' + elem + ')')
+        : `${elem}${access}${cfg.next}`;
       const nxRaw = cleanValue(await gdbExec(session, `print ${nextExpr}`, frameId));
       idx = toI(nxRaw);
       log.trace(`index_list "${name}" step ${guard - 1}: idx ${fromIdx} → next [ ${nextExpr} ] = "${nxRaw}" → idx ${idx}`);

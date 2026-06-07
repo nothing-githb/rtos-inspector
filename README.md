@@ -122,7 +122,7 @@ Every field, across all modes:
 | `mode`    | all | — (required) | `"linked_list"`, `"array"`, or `"index_list"`. Selects the traversal. |
 | `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, or buffer). May contain `${selected}` / `${master}`. |
 | `fields`  | all | — (required) | Ordered list of `{ "label", "expr" }` columns. `label` is the header (and first column = row identity); `expr` is the accessor appended after the element. |
-| `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index** (an integer). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a clickable/grouped master's selector expression. |
+| `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index**, OR a `${expr}` template that computes it (like `wrap` — `${expr}` is the element; e.g. `"${expr}.link.idx"` or `"g_succ[${expr}.id]"`). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a clickable/grouped master's selector expression. |
 | `head`    | index_list | — | Starting **index** expression, read once. May contain `${selected}` / `${master}`. |
 | `nil`     | index_list | `-1` | Sentinel index that ends the walk. May contain `${selected}` / `${master}`. |
 | `count`   | array | — (required for array) | Expression giving the element count; read once per refresh. If it can't be read it's treated as `0` (empty table). May contain `${selected}` / `${master}`. |
@@ -246,6 +246,11 @@ breaks cycles, and `max` bounds the length.
 
 With the chain `0 → 2 → 5` this shows three rows; slots `1/3/4` are skipped
 because they are not on the chain.
+
+If the next index isn't a plain field, `next` may be a **`${expr}` template**
+(like `wrap`) where `${expr}` is the element — e.g. `"next": "${expr}.link.idx"`,
+or a lookup `"next": "g_succ[${expr}.id]"`. Without `${expr}` it stays the simple
+`element<access>next`.
 
 ---
 

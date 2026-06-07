@@ -45,7 +45,7 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 |-----------|-----------------------------|---------|
 | `mode`    | all *(required)*            | `"linked_list"`, `"array"`, or `"index_list"`. |
 | `root`    | all *(required)*            | Starting expression in your program's own syntax (head pointer or array). May contain `${selected}` / `${master}`. |
-| `next`    | linked_list, index_list     | Field giving the next element — a **pointer** (`cursor->next`) for linked_list, an **index** for index_list. Used verbatim, so set it (it only falls back to `next` when building a master's clickable/grouped selector). |
+| `next`    | linked_list, index_list     | Field giving the next element — a **pointer** (`cursor->next`) for linked_list, an **index** for index_list. For index_list it may instead be a `${expr}` **template** (like `wrap`) that computes the next index, e.g. `"${expr}.link.idx"`. Used verbatim, so set it (it only falls back to `next` when building a master's clickable/grouped selector). |
 | `head`    | index_list                  | Starting **index** expression. May contain `${selected}` / `${master}`. |
 | `nil`     | index_list                  | Sentinel index that ends the walk (default `-1`). May contain `${selected}` / `${master}`. |
 | `count`   | array                       | Expression yielding the element count (parsed as an integer). May contain `${selected}` / `${master}`. |
@@ -129,6 +129,11 @@ A list living inside an array, linked by a next-**index** field. Start at `head`
   }
 }
 ```
+
+When the next index isn't a plain field, `next` accepts a **`${expr}` template**
+(like `wrap`) where `${expr}` is the element — e.g. `"next": "${expr}.link.idx"`
+or a lookup `"next": "g_succ[${expr}.id]"`. (The demo's `procSlots` uses
+`"next": "${expr}.next"`.)
 
 ### Master–detail (`${selected}`)
 

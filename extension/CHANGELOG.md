@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.19.0] - 2026-06-06
+
+### Added
+- **`index_list` `next` accepts a `${expr}` template** (like `wrap`). When `next`
+  contains `${expr}` (the element), the next index is computed from that template
+  instead of the default `element<access>next` — enabling non-suffix next-index
+  expressions such as `"${expr}.link.idx"` or a lookup `"g_succ[${expr}.id]"`.
+  Backward compatible (plain field names work unchanged). The demo's `procSlots`
+  now uses `"next": "${expr}.next"`.
+
 ## [0.18.4] - 2026-06-06
 
 ### Other

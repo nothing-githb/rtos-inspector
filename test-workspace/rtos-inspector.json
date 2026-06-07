@@ -120,13 +120,13 @@
     ]
   },
 
-  "//procSlots": "grouped + index_list birlikte: her process'in g_slot_pool içindeki index-zinciri. head ${master}->slot_head ile o process'e göre başlar; processes altında ağaç olarak gruplanır.",
+  "//procSlots": "grouped + index_list birlikte: her process'in g_slot_pool içindeki index-zinciri. head ${master}->slot_head ile o process'e göre başlar; processes altında ağaç. 'next' burada wrap-benzeri ${expr} şablonu (elem.next) ile yazılmıştır.",
   "procSlots": {
     "groupBy": "processes",
     "mode": "index_list",
     "root": "g_slot_pool",
     "head": "${master}->slot_head",
-    "next": "next",
+    "next": "${expr}.next",
     "nil": "-1",
     "access": ".",
     "fields": [
