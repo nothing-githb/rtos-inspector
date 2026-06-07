@@ -90,6 +90,7 @@ section's JSON key is its tab label (`threads`, `semaphores`, `mutexes`,
 | `next`   | *(linked_list)* the field pointing to the next node |
 | `count`  | *(array)* expression yielding the element count |
 | `access` | *(array)* element field access: `"."` (default) or `"->"` |
+| `cast`   | *(array)* element type for a generic `void*` buffer → `((cast *)(root))[i]` |
 | `max`    | Safety upper bound (default `1024`) |
 | `fields` | List of `{ "label", "expr" }` → the columns to display |
 
@@ -167,6 +168,29 @@ details. For a process list whose processes each own their own sub-lists:
 Click a process row and the `threads` and `mutexes` tables show *that* process's
 lists. The first master row is selected automatically. Array detail sections may
 also use `${selected}` in `count` (e.g. `"count": "${selected}->n"`).
+
+### Generic `void*` arrays
+
+If a container stores its elements behind a `void *` buffer (a dynamic array),
+give the element type with `cast` so the buffer can be indexed:
+
+```json
+{
+  "widgets": {
+    "mode": "array",
+    "root": "g_widgets.data",
+    "count": "g_widgets.size",
+    "cast": "widget_t",
+    "access": ".",
+    "fields": [ { "label": "X", "expr": "x" }, { "label": "Label", "expr": "label" } ]
+  }
+}
+```
+
+This reads each element as `((widget_t *)(g_widgets.data))[i]`. `count` is any
+expression for the element count (e.g. `used / sizeof(T)`); the row count shown
+in the summary is that size. For a buffer of *pointers*, set `cast` to the
+pointer type and `access` to `"->"`.
 
 ### Settings
 

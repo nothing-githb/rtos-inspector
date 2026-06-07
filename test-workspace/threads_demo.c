@@ -43,6 +43,18 @@ typedef struct kmutex {
     struct kmutex  *next;
 } kmutex_t;
 
+/* ---------------- Dynamic array (void* buffer + size -> 'cast' gerekir) ---------------- */
+typedef struct {
+    int          x;
+    int          y;
+    const char  *label;
+} widget_t;
+
+typedef struct {
+    void *data;   /* generic buffer; aslinda widget_t[] tutar */
+    int   size;   /* eleman sayisi */
+} dyn_array_t;
+
 /* ---------------- Process (master: alt listeleri tutar) ---------------- */
 typedef struct process {
     int              pid;
@@ -90,6 +102,9 @@ int      g_timer_count = 0;
 process_t g_procs[MAX_PROCS];
 int       g_proc_count = 0;
 process_t *g_process_list;   /* master listenin başı */
+#define MAX_WIDGETS 4
+widget_t    g_widget_pool[MAX_WIDGETS];   /* arka depo */
+dyn_array_t g_widgets;                    /* data = void*, widget_t[] gösterir */
 
 kpool_t  g_pool0;
 kernel_t g_kernel;
@@ -166,6 +181,13 @@ int main(void)
     mk_timer(2, "watchdog", 100, 50, 1);
     mk_timer(3, "blink",    5,   0, 0);
 
+    /* dynamic array: void* buffer widget_t[] tutar; erişim için cast gerekir */
+    g_widget_pool[0].x = 10; g_widget_pool[0].y = 20; g_widget_pool[0].label = "button";
+    g_widget_pool[1].x = 30; g_widget_pool[1].y = 40; g_widget_pool[1].label = "slider";
+    g_widget_pool[2].x = 50; g_widget_pool[2].y = 60; g_widget_pool[2].label = "label";
+    g_widgets.data = g_widget_pool;
+    g_widgets.size = 3;
+
     /* master liste: 2 process, her biri kendi alt listeleriyle */
     process_t *p0 = mk_proc(1, "init",   a, s0, m0);
     process_t *p1 = mk_proc(2, "worker", c, s2, m1);
@@ -185,6 +207,7 @@ int main(void)
         m1->locked = (tick % 2);
         m1->owner  = (tick % 2) ? 4 : 0;
         g_timers[0].elapsed = tick;          /* array eleman alanı her tick değişir */
+        g_widget_pool[0].x  = 10 + tick;     /* void* array elemanı da değişir */
         inspect_point(tick);
     }
     return 0;

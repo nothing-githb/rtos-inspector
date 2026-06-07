@@ -12,6 +12,7 @@ interface SectionCfg {
   next?: string;      // linked_list
   count?: string;     // array
   access?: string;    // array eleman erişimi: "." (default) veya "->"
+  cast?: string;      // array: void*/generic buffer'ı eleman tipine cast et -> ((cast *)(root))[i]
   max?: number;
   fields: FieldCfg[];
 }
@@ -191,12 +192,14 @@ async function collectSection(
 
   if (cfg.mode === 'array') {
     const access = cfg.access ?? '.';
+    // cast verilirse void*/generic buffer eleman tipine cast edilir: ((T *)(root))[i]
+    const base = cfg.cast ? `((${cfg.cast} *)(${cfg.root}))` : `(${cfg.root})`;
     const countRaw = await gdbExec(session, `print ${cfg.count}`, frameId);
     const count = parseInt(cleanValue(countRaw), 10) || 0;
     for (let i = 0; i < Math.min(count, max); i++) {
       const row: Row = {};
       for (const f of cfg.fields) {
-        const v = await gdbExec(session, `print (${cfg.root})[${i}]${access}${f.expr}`, frameId);
+        const v = await gdbExec(session, `print ${base}[${i}]${access}${f.expr}`, frameId);
         row[f.label] = cleanValue(v);
       }
       rows.push(row);

@@ -2,6 +2,14 @@
 
 All notable changes to the **RTOS Inspector** extension are documented here.
 
+## [0.12.0] - 2026-06-06
+
+### Added
+- **`cast` field for array sections.** Set `"cast": "T"` to read a generic
+  `void*` buffer as an array of `T`: the element access becomes
+  `((T *)(root))[i]`. Useful for dynamic-array containers that store elements
+  behind a `void *data` + `size`. The demo gains a `widgets` dynamic array.
+
 ## [0.11.0] - 2026-06-06
 
 ### Added

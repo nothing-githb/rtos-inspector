@@ -60,5 +60,19 @@
       { "label": "Elapsed", "expr": "elapsed" },
       { "label": "Active",  "expr": "active" }
     ]
+  },
+
+  "//widgets": "void* buffer (g_widgets.data) widget_t[] tutar; 'cast' ile eleman tipine cast edilir, 'count' = size.",
+  "widgets": {
+    "mode": "array",
+    "root": "g_widgets.data",
+    "count": "g_widgets.size",
+    "cast": "widget_t",
+    "access": ".",
+    "fields": [
+      { "label": "X",     "expr": "x" },
+      { "label": "Y",     "expr": "y" },
+      { "label": "Label", "expr": "label" }
+    ]
   }
 }
