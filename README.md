@@ -2,68 +2,67 @@
 
 **Visualize your own C/C++ data structures as live tables while debugging with GDB.**
 
-Debug Inspector turns the in-memory data structures of *your* program — linked
-lists and arrays of structs such as thread control blocks, semaphores, mutexes,
-ready/blocked queues, timers, memory free-lists, or any node list — into clean,
-sortable tables in a VS Code panel, refreshed every time the debugger stops.
-
-You describe what to walk in a small JSON file (`rtos-inspector.json`); the
-extension knows nothing about your types, so it works with any C/C++ codebase —
-bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at
-embedded / RTOS developers but useful for any structures you'd otherwise expand
-by hand in the debugger.
+Debug Inspector turns the in-memory data structures of *your* program — threads,
+semaphores, mutexes, queues, linked lists, or any collection of structs — into
+clean, sortable tables in a VS Code panel, refreshed every time the debugger
+stops. You describe what to walk in a small JSON file; the extension knows
+nothing about your types, so it works with any C/C++ codebase: bare-metal, a
+hobby or commercial RTOS, or plain application code. It is **config-driven** and
+**read-only** — it never writes your program's memory.
 
 > Repository: https://github.com/nothing-githb/rtos-inspector
 
-## Typical uses
+### See it in 20 seconds
 
-- Inspect an RTOS scheduler's **thread / TCB** list, **semaphore** / **mutex**
-  tables, or ready / blocked queues.
-- Walk any **linked list** or **array of structs** in plain C/C++ code.
-- **Drill from a parent into its children** — click a process to see its own
-  threads / semaphores / mutexes.
-- Watch values **change between stops** — state transitions, counters, refcounts.
+1. Debug a C/C++ program with GDB (`type: cppdbg`).
+2. Drop a `rtos-inspector.json` at your workspace root naming one section per
+   structure (e.g. a `linked_list` rooted at `g_thread_list`).
+3. Run **"Debug Inspector: Open Panel"**.
+4. Hit a breakpoint — every section appears as its own sortable table tab, and
+   cells that changed since the last stop light up amber. Press *continue* and
+   the panel re-reads on the next stop.
 
 ## Features
 
-- **Config-driven & generic.** Point it at any global expression; no assumptions
-  about your layout and no changes to your program.
-- **One tab per structure.** Add as many named sections as you have data
-  structures — each becomes its own table, with tabs generated dynamically.
-- **Master–detail.** Give a section's `root` a `${selected}` placeholder and it
-  becomes a detail table; click a row in a master section (e.g. a process) to
-  populate it with *that* element's lists (its threads / semaphores / mutexes).
-- **Grouping (tree).** Or keep a section in its **own tab** but show it as a
-  collapsible tree grouped under a master (`groupBy` + `${master}`) — e.g. all
-  semaphores grouped under each process — with a flat-view toggle.
-- **Three traversal modes:** `linked_list` (head pointer + `next` field),
-  `array` (`count` elements, with `.` / `->` element access), and `index_list`
-  (a list stored in an array, linked by a *next-index* field — empties skipped).
+- **Config-driven & generic.** Point a section at any global expression — no
+  assumptions about your layout, no changes to your program.
+- **One tab per structure.** Each named section becomes its own table; tabs are
+  generated dynamically and ordered as they appear in the file.
+- **Three traversal modes.** `linked_list` (head pointer + `next` field),
+  `array` (`count` elements with `.`/`->` access), and `index_list` (a list
+  living inside an array, linked by a *next-index* field — empty slots skipped).
+- **Master-detail.** A `${selected}` placeholder turns a section into a detail
+  table; click a row in a master section to populate it with *that* element's
+  lists. First master row is auto-selected.
+- **Grouping (tree).** Or keep a section in its own tab as a collapsible tree
+  grouped under a master (`groupBy` + `${master}`) — all parents shown at once,
+  with a Flat-view toggle.
 - **Arbitrary root expressions** — anything valid in GDB, e.g.
   `g_kernel.pools[0]->thread_list`.
-- **Live updates** on every stop, with a "running…" badge while the program runs.
-- **Sortable columns** (numeric/hex sort numerically, text alphabetically).
-- **Change highlighting** — values that changed since the previous stop are
-  flagged, with the previous value shown faded (struck-through) next to the new
-  one, plus an "N changed" badge.
-- **Pick & reorder columns** — drag a header (with a drop indicator) or drag the
-  rows in the "▦ Columns" menu to reorder; right-click a header / use the menu to
-  show-hide. Saved per workspace. **Hidden columns are not read from GDB at
-  all**; enabling one fetches its data on the spot.
-- **Refresh on demand or on change** — a Refresh button re-reads the config, and
-  the panel auto-refreshes when `rtos-inspector.json` changes on disk.
-- **Pause when you don't need it** — a Pause/Resume toggle stops the
-  auto-refresh-on-stop (and GDB queries); Refresh still works on demand. The
-  choice is remembered per workspace.
-- **Read-only & safe** — only *reads* globals; never calls functions, so program
-  state is never disturbed.
+- **Generic `void*` buffers.** Reinterpret an untyped buffer as a typed array
+  with `cast`, or transform each element before field access with `wrap`
+  (cast a pointer, hop through a field, deref).
+- **Live updates** on every stop, with a `running…` badge while the program runs
+  and a `paused` pill when paused.
+- **Sortable columns** — numeric/hex sorts numerically, text sorts alphabetically.
+- **Change highlighting** — changed cells are amber, with the previous value shown
+  faded and struck-through next to the new one, plus an `N changed` badge.
+- **Pick & reorder columns** — drag a header (blue drop indicator + drag-preview
+  chip) or drag rows in the **▦ Columns** menu; show/hide via the menu or a
+  header right-click. **Hidden columns are not read from GDB at all**; enabling
+  one fetches it on the spot. Saved per workspace.
+- **Refresh on demand or on change** — a Refresh button does a one-shot read, and
+  the panel auto-refreshes when the config file changes on disk.
+- **Pause / Resume** — stop the auto-refresh-on-stop (and the GDB queries it
+  makes); Refresh still works on demand. Remembered per workspace.
+- **Read-only & safe** — it only *reads* your globals via `print`, and never
+  calls your functions. The only `set` commands it issues target its own
+  `$`-prefixed GDB convenience-variable cursors, never your memory.
 - **Tidy empties** — an unreadable/inaccessible value or a NULL pointer (`0x0`)
-  shows as a muted `-` (a plain integer `0` stays `0`).
-- **Leveled, color-coded logs** — an *Debug Inspector* Output channel (rendered
-  with `log` syntax so timestamps/severities/values are colorized); pick the level
-  with the `rtosInspector.logLevel` setting (`off` / `info` / `debug`). At `debug`
-  every GDB query/result and each traversal step (e.g. how `next` is resolved at
-  each hop) is shown.
+  shows as a muted `-`; a plain integer `0` stays `0`.
+- **Leveled, color-coded logs** — a *Debug Inspector* Output channel (rendered
+  with the `log` language so timestamps/severities are colorized); pick `off` /
+  `info` / `debug`.
 
 ## Requirements
 
@@ -73,106 +72,190 @@ by hand in the debugger.
 
 ## Install
 
+- **From the Marketplace:** search for **Debug Inspector**, or open
+  [the listing](https://marketplace.visualstudio.com/items?itemName=halistahasahin.rtos-inspector)
+  (`itemName=halistahasahin.rtos-inspector`).
 - **From a packaged build:** `code --install-extension dist/rtos-inspector-<version>.vsix`
   (or in VS Code: Extensions → ⋯ → *Install from VSIX…*).
-- **From the Marketplace:** search for the extension once it is published.
 
 ## Quick start
 
 1. Debug your C/C++ program with `cppdbg` (GDB).
 2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
-3. Run **“Debug Inspector: Open Panel”** from the Command Palette.
-4. When you hit a breakpoint the panel fills in; on `continue` it shows
-   "running…" and refreshes again on the next stop.
+3. Run **"Debug Inspector: Open Panel"** from the Command Palette.
+4. When you hit a breakpoint the panel fills in; on *continue* it shows
+   `running…` and refreshes again on the next stop.
+
+## How it works
+
+Debug Inspector registers a **debug adapter tracker** for the configured debug
+types and listens for `stopped` / `continued` events. On stop (unless paused) it
+grabs the top stack frame and reads your data **read-only** by issuing
+`-exec print …` through the debug adapter's `evaluate` request, then strips
+GDB's `$N =` / prompt noise from each result. Each section is walked according to
+its `mode`:
+
+- **linked_list** seeds a GDB convenience-variable cursor (`set $ri_<i> = root`),
+  reads fields off the cursor, then advances `set $ri_<i> = $ri_<i>->next` until
+  the cursor is NULL.
+- **array** indexes a base expression `0…min(count, max)`.
+- **index_list** starts at `head`, reads `root[idx]`, then follows the `next`
+  *index* until it hits `nil`.
+
+Only the **currently visible columns** are fetched, so hidden columns cost
+nothing.
 
 ## Configuration
 
-Add **one section per data structure** — each becomes its own dynamically
-generated, sortable table / tab, and you can add **as many as you like**. The
-section's JSON key is its tab label (`threads`, `semaphores`, `mutexes`,
-`queues`, … — any name). Each section uses the same fields:
+The config file (default `rtos-inspector.json`) is a **JSON map of named
+sections**. Each key whose value is an object with a string `mode` and an array
+`fields` is a section; the key is its tab label. **Keys starting with `//` are
+ignored** (handy for inline notes). Section order is preserved and drives tab
+order.
 
-| Field    | Meaning |
-|----------|---------|
-| `mode`   | `"linked_list"`, `"array"`, or `"index_list"` |
-| `root`   | Starting expression — the head pointer / the array |
-| `next`   | *(linked_list)* next-node pointer field · *(index_list)* next-**index** field |
-| `head`   | *(index_list)* starting index expression |
-| `nil`    | *(index_list)* index that ends the walk (default `-1`) |
-| `count`  | *(array)* expression yielding the element count |
-| `access` | *(array)* element field access: `"."` (default) or `"->"` |
-| `cast`   | *(array)* cast for a generic `void*` buffer — write it in full (e.g. `widget_t *`) → `((cast)(root))[i]` |
-| `wrap`   | wrap the **element** (before field access); `${expr}` = the element → `wrap(elem)<access>field` |
-| `label`  | *(master)* expression that titles each tree node when another section groups by this one |
-| `groupBy`| render this section as a tree grouped under the named master section; use `${master}` in `root` |
-| `max`    | Safety upper bound (default `1024`) |
-| `fields` | List of `{ "label", "expr" }` → the columns to display |
+### Schema
 
-`wrap` transforms each element *before* its fields are read — useful when the
-element itself is a `void*` that must be cast. For an array of pointers
-(`void *slots[]`), `"wrap": "((widget_t *)${expr})"` with `"access": "->"` reads
-each element as `((widget_t *)(slots[i]))->field`. The wrap output is
-parenthesized before the field access, so a deref wrap like `*(${expr})` composes
-correctly (`(*(elem)).field`).
+Every field, across all modes:
 
-If the real data is reached through a **field first** (each slot is a
-`{ void *data; … }` wrapper), put that field inside the wrap so the hop happens
-**before** the cast: `"wrap": "((widget_t *)(${expr}.data))"` with `"access": "->"`
-→ `((widget_t *)(box[i].data))->field`.
+| Field     | Modes | Default | Meaning |
+|-----------|-------|---------|---------|
+| `mode`    | all | — (required) | `"linked_list"`, `"array"`, or `"index_list"`. Selects the traversal. |
+| `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, or buffer). May contain `${selected}` / `${master}`. |
+| `fields`  | all | — (required) | Ordered list of `{ "label", "expr" }` columns. `label` is the header (and first column = row identity); `expr` is the accessor appended after the element. |
+| `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index** (an integer). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a clickable/grouped master's selector expression. |
+| `head`    | index_list | — | Starting **index** expression, read once. May contain `${selected}` / `${master}`. |
+| `nil`     | index_list | `-1` | Sentinel index that ends the walk. May contain `${selected}` / `${master}`. |
+| `count`   | array | — (required for array) | Expression giving the element count; read once per refresh. If it can't be read it's treated as `0` (empty table). May contain `${selected}` / `${master}`. |
+| `access`  | array, index_list | `.` | Accessor between element and field — `"."` for a value element, `"->"` for a pointer. (linked_list always uses `->`.) |
+| `cast`    | array, index_list | — | Cast applied to `root` to reinterpret an untyped buffer. **Write it in full** — no `*` is appended for you. |
+| `wrap`    | all | — | Template that transforms the **element** before field access; `${expr}` = the element. |
+| `label`   | master sections | row key | Expression titling each tree node when another section groups by this one. |
+| `groupBy` | grouping sections | — | Name of a master section; renders this section as a tree in its own tab. Use `${master}` in `root`. |
+| `max`     | all | `1024` | Traversal upper bound (array loop cap; cycle/length guard for the lists). |
 
-### Example `rtos-inspector.json`
+#### `cast` — reinterpret a buffer (written in full)
+
+`cast` is applied to `root` to form the base, **as you wrote it** — no trailing
+`*` is added. The base becomes `((cast)(root))` and elements index off it:
+
+```
+cast: "widget_t *",  root: "g_widgets.data"   →   ((widget_t *)(g_widgets.data))[i]
+```
+
+#### `wrap` — transform the element (deref, cast, field-hop)
+
+`wrap` rewrites each element **before** its fields are read. `${expr}` is the
+element; the element is parenthesized into the template, and **the whole wrap
+output is parenthesized again** before the access is appended. So with element
+`g_slots[i]` and `access: "->"`:
+
+```
+wrap: "((widget_t *)${expr})"   →   (((widget_t *)(g_slots[i])))->field
+```
+
+The extra outer parens fix precedence — a deref wrap `"*(${expr})"` yields
+`(*(elem)).field` rather than the mis-parsed `*(elem).field`. `wrap` composes
+**with** `cast`: `cast` is applied to `root` to form the element, then `wrap`
+wraps that element. To reach the real data through a **field first** (each slot
+is a `{ void *data; … }` wrapper), do the hop *inside* the wrap so it happens
+before the cast:
+
+```
+wrap: "((widget_t *)(${expr}.data))",  access: "->"   →   ((widget_t *)(g_boxes[i].data))->field
+```
+
+#### Placeholders — `${selected}` and `${master}`
+
+Both resolve to the master row's **fully processed element** (its own `cast` and
+`wrap` re-applied — no address-taking, no extra cast needed):
+
+- **`${selected}`** (master-detail) — a section is a *detail* section when
+  `${selected}` appears in its `root`, `head`, or `count`. It is substituted (in
+  parentheses) into `root`, `count`, `head`, and `nil` with the **currently
+  selected** master row's element.
+- **`${master}`** (grouping) — used in a section that sets `groupBy`. For **each**
+  master element, `${master}` is substituted into `root`, `count`, `head`, and
+  `nil`, producing one group per parent.
+
+#### `label`
+
+On a master section, `label` is an expression evaluated on the master element to
+title each node in a grouped child. A `char*` rendered by GDB as `0x.. "init"` is
+shown as just `init`. If a grouped child's master has no `label`, the group's key
+(the master row's first-column value) is used instead.
+
+---
+
+### The three modes
+
+**`linked_list`** — head pointer + `next` field. Seeds a cursor at `root`, reads
+fields, advances `cursor = cursor->next`, stops at NULL (`0x0` or empty) or `max`.
 
 ```json
-{
-  "threads": {
-    "mode": "linked_list",
-    "root": "g_kernel.pools[0]->thread_list",
-    "next": "next",
-    "fields": [
-      { "label": "ID",          "expr": "id" },
-      { "label": "Name",        "expr": "name" },
-      { "label": "State",       "expr": "state" },
-      { "label": "Priority",    "expr": "prio" },
-      { "label": "Stack Start", "expr": "stack_base" },
-      { "label": "Stack Size",  "expr": "stack_size" }
-    ]
-  },
-  "semaphores": {
-    "mode": "linked_list",
-    "root": "g_kernel.pools[0]->sem_list",
-    "next": "next",
-    "fields": [
-      { "label": "ID",         "expr": "id" },
-      { "label": "Count",      "expr": "count" },
-      { "label": "Max",        "expr": "max_count" },
-      { "label": "Waiting",    "expr": "waiting" },
-      { "label": "Discipline", "expr": "discipline" }
-    ]
-  },
-  "mutexes": {
-    "mode": "linked_list",
-    "root": "g_kernel.pools[0]->mutex_list",
-    "next": "next",
-    "fields": [
-      { "label": "ID",      "expr": "id" },
-      { "label": "Name",    "expr": "name" },
-      { "label": "Owner",   "expr": "owner" },
-      { "label": "Locked",  "expr": "locked" }
-    ]
-  }
+"processes": {
+  "mode": "linked_list",
+  "root": "g_process_list",
+  "next": "next",
+  "label": "name",
+  "fields": [
+    { "label": "PID",  "expr": "pid" },
+    { "label": "Name", "expr": "name" }
+  ]
 }
 ```
 
-> The same mechanism fits any struct collection — point a section at a mutex
-> list, a ready queue, or a memory free-list (`linked_list` or `array` mode) and
-> label the columns with any GDB expressions.
+**`array`** — `count` elements off `root` (cast-aware), indexed `0…min(count, max)`,
+with `.`/`->` access. No NULL/sentinel logic.
 
-### Master–detail (linked sections)
+```json
+"timers": {
+  "mode": "array",
+  "root": "g_timers",
+  "count": "g_timer_count",
+  "access": ".",
+  "fields": [
+    { "label": "ID",      "expr": "id" },
+    { "label": "Name",    "expr": "name" },
+    { "label": "Period",  "expr": "period" },
+    { "label": "Elapsed", "expr": "elapsed" },
+    { "label": "Active",  "expr": "active" }
+  ]
+}
+```
 
-To drill from a parent into its children, put a `${selected}` placeholder in a
-section's `root`. That section becomes a *detail* table; clicking a row in a
-master section resolves `${selected}` to the clicked element and re-fetches the
-details. For a process list whose processes each own their own sub-lists:
+**`index_list`** — a list inside an array, linked by an integer index. Start at
+`head`, read `root[idx]`, follow `next` (the next index) until it equals `nil`
+(default `-1`). Slots that aren't on the chain are never visited. A visited-set
+breaks cycles, and `max` bounds the length.
+
+```json
+"pool": {
+  "mode": "index_list",
+  "root": "g_slot_pool",
+  "head": "g_slot_head",
+  "next": "next",
+  "nil": "-1",
+  "access": ".",
+  "fields": [
+    { "label": "ID",   "expr": "id" },
+    { "label": "Name", "expr": "name" },
+    { "label": "Next", "expr": "next" }
+  ]
+}
+```
+
+With the chain `0 → 2 → 5` this shows three rows; slots `1/3/4` are skipped
+because they are not on the chain.
+
+---
+
+### Master-detail (`${selected}`)
+
+Drill from a parent into its children. Put `${selected}` in a section's `root`
+(or `head`/`count`) to make it a *detail* table. When any detail section exists,
+every master section's rows become **clickable**; clicking one resolves
+`${selected}` to that element and re-fetches the detail tabs. The first master
+row is auto-selected.
 
 ```json
 {
@@ -182,7 +265,10 @@ details. For a process list whose processes each own their own sub-lists:
   },
   "threads": {
     "mode": "linked_list", "root": "${selected}->thread_list", "next": "next",
-    "fields": [ { "label": "ID", "expr": "id" }, { "label": "State", "expr": "state" } ]
+    "fields": [
+      { "label": "ID", "expr": "id" }, { "label": "Name", "expr": "name" },
+      { "label": "State", "expr": "state" }, { "label": "Priority", "expr": "prio" }
+    ]
   },
   "mutexes": {
     "mode": "linked_list", "root": "${selected}->mutex_list", "next": "next",
@@ -191,16 +277,15 @@ details. For a process list whose processes each own their own sub-lists:
 }
 ```
 
-Click a process row and the `threads` and `mutexes` tables show *that* process's
-lists. The first master row is selected automatically. `${selected}` may appear
-in `root`, `count`, `head`, or `nil` (e.g. an `index_list` detail with
-`"head": "${selected}->free_head"`).
+Click a `processes` row and the `threads` / `mutexes` tabs show *that* process's
+lists. An `index_list` detail can start at a per-parent head, e.g.
+`"head": "${selected}->free_head"`.
 
-### Grouping (tree, in the same tab)
+### Grouping / tree (`groupBy` + `${master}`)
 
-To keep a section in its **own tab** but show it grouped under a parent (instead
-of separate detail tabs), set `groupBy` to the master section's name and use
-`${master}` in `root`. The master's `label` titles each node:
+Keep a section in its **own tab** but show it as a collapsible tree of **all**
+parents at once (not click-driven). Set `groupBy` to the master section's name
+and use `${master}` in `root`; the master's `label` titles each node.
 
 ```json
 {
@@ -212,85 +297,141 @@ of separate detail tabs), set `groupBy` to the master section's name and use
   "semaphores": {
     "groupBy": "processes",
     "mode": "linked_list", "root": "${master}->sem_list", "next": "next",
-    "fields": [ { "label": "ID", "expr": "id" }, { "label": "Count", "expr": "count" } ]
+    "fields": [
+      { "label": "ID", "expr": "id" }, { "label": "Count", "expr": "count" },
+      { "label": "Max", "expr": "max_count" }, { "label": "Waiting", "expr": "waiting" },
+      { "label": "Discipline", "expr": "discipline" }
+    ]
   }
 }
 ```
 
-The Semaphores tab then lists every process as a collapsible node with its own
-semaphores beneath; a **Flat view** button switches to an ungrouped list.
-(Grouping shows *all* parents at once in one tab; master–detail shows one
-selected parent's children across separate tabs — use whichever fits.)
-
-`${master}` may appear in `root`, `count`, **`head`**, or `nil` — so an
-`index_list` can start its walk at a per-parent head, e.g.
-`"head": "${master}->slot_head"`. (`${selected}` works in the same fields for
-master–detail.) The substituted value is the master's **processed element** (its
-own `cast`/`wrap` applied), so masters stored behind a `void*` work too.
-
-### Generic `void*` arrays
-
-If a container stores its elements behind a `void *` buffer (a dynamic array),
-give the element type with `cast` so the buffer can be indexed:
+The Semaphores tab lists each process as a collapsible node (caret + count badge)
+with its semaphores beneath, titled by the process `name`. A **☰ Flat view**
+toggle switches to a single ungrouped table of all rows. Grouping also works with
+`index_list` and a per-parent head:
 
 ```json
-{
-  "widgets": {
-    "mode": "array",
-    "root": "g_widgets.data",
-    "count": "g_widgets.size",
-    "cast": "widget_t *",
-    "access": ".",
-    "fields": [ { "label": "X", "expr": "x" }, { "label": "Label", "expr": "label" } ]
-  }
+"procSlots": {
+  "groupBy": "processes",
+  "mode": "index_list",
+  "root": "g_slot_pool",
+  "head": "${master}->slot_head",
+  "next": "next",
+  "nil": "-1",
+  "access": ".",
+  "fields": [ { "label": "ID", "expr": "id" }, { "label": "Name", "expr": "name" } ]
 }
 ```
 
-This reads each element as `((widget_t *)(g_widgets.data))[i]`. `count` is any
-expression for the element count (e.g. `used / sizeof(T)`); the row count shown
-in the summary is that size. For a buffer of *pointers*, set `cast` to the
-pointer type and `access` to `"->"`.
+> Master-detail shows **one** selected parent's children across separate tabs;
+> grouping shows **all** parents at once in one tab. Use whichever fits.
 
-### Index-linked lists (a list inside an array)
+### Generic `void*` arrays (`cast`)
 
-When a list lives in a fixed array and elements link by an **index** rather than
-a pointer (an intrusive free-list / slot pool, with some slots empty), use
-`index_list`: start at `head`, read `root[idx]`, then follow the `next` index
-until it equals `nil` (default `-1`). Empty slots are skipped automatically.
+When a container stores its elements behind a `void *` buffer (a dynamic array),
+give the element type with `cast` so the buffer can be indexed. For a buffer of
+*pointers*, set `cast` to the pointer type and `access` to `"->"`.
 
 ```json
-{
-  "pool": {
-    "mode": "index_list",
-    "root": "g_slot_pool",
-    "head": "g_slot_head",
-    "next": "next",
-    "nil": "-1",
-    "access": ".",
-    "fields": [ { "label": "ID", "expr": "id" }, { "label": "Name", "expr": "name" } ]
-  }
+"widgets": {
+  "mode": "array",
+  "root": "g_widgets.data",
+  "count": "g_widgets.size",
+  "cast": "widget_t *",
+  "access": ".",
+  "fields": [
+    { "label": "X", "expr": "x" }, { "label": "Y", "expr": "y" },
+    { "label": "Label", "expr": "label" }
+  ]
 }
 ```
 
-`cast`/`wrap`/`access` work as in `array` mode; a visited-set and `max` guard
-against cycles. Write `nil` as GDB prints the index (usually decimal).
+This reads each element as `((widget_t *)(g_widgets.data))[i].field`.
 
-### Settings
+### `wrap` — element-array pointers and pre-cast field hops
 
-| Setting                | Default          | Description |
-|------------------------|------------------|-------------|
-| `rtosInspector.configPath` | `rtos-inspector.json` | Config file path: **absolute**, or relative to the workspace root. |
-| `rtosInspector.logLevel`   | `info`           | Output channel verbosity: `off` / `info` / `debug`. |
-| `rtosInspector.debugTypes` | `["cppdbg"]`     | Debug adapter types the tracker attaches to. |
+For an **array of pointers** (`void *g_slots[3]`, each a `widget_t*`), cast the
+element inside `wrap` and use `->`:
 
-## How it works
+```json
+"slots": {
+  "mode": "array",
+  "root": "g_slots",
+  "count": "3",
+  "wrap": "((widget_t *)${expr})",
+  "access": "->",
+  "fields": [
+    { "label": "X", "expr": "x" }, { "label": "Y", "expr": "y" },
+    { "label": "Label", "expr": "label" }
+  ]
+}
+```
 
-Debug Inspector registers a debug adapter tracker for the configured debug types and
-listens for `stopped`/`continued` events. On stop it grabs the top stack frame
-and issues `-exec print …` commands through the debug adapter's `evaluate`
-request, cleaning GDB's `$N =` / prompt noise from the output. Linked lists are
-walked with a GDB convenience variable; arrays are indexed up to `count`. Only
-the currently visible columns are fetched.
+→ `(((widget_t *)(g_slots[i])))->x`.
+
+For a **field-first hop** (`box_t g_boxes[3]`, each `{ void *data; int kind }`),
+reach `.data` inside the wrap *before* casting:
+
+```json
+"boxes": {
+  "mode": "array",
+  "root": "g_boxes",
+  "count": "3",
+  "wrap": "((widget_t *)(${expr}.data))",
+  "access": "->",
+  "fields": [
+    { "label": "X", "expr": "x" }, { "label": "Label", "expr": "label" }
+  ]
+}
+```
+
+→ `((widget_t *)(g_boxes[i].data))->x`.
+
+### `index_list` — extra notes
+
+`cast` / `wrap` / `access` work exactly as in `array` mode. Write `nil` the way
+GDB prints the index (usually decimal). A visited-set and the `max` bound guard
+against cycles and runaway chains.
+
+## Settings
+
+| Setting                     | Default                 | Description |
+|-----------------------------|-------------------------|-------------|
+| `rtosInspector.configPath`  | `rtos-inspector.json`   | Path to the config file. **Absolute paths are used as-is** (work even with no workspace folder); a **relative path resolves against the workspace root**. Changing it re-creates the file watcher. |
+| `rtosInspector.logLevel`    | `info`                  | Output channel verbosity: `off` / `info` / `debug`. Applied live on change. |
+| `rtosInspector.debugTypes`  | `["cppdbg"]`            | Debug adapter types the tracker attaches to. Use `cppdbg` for GDB. |
+
+## Commands
+
+- **Debug Inspector: Open Panel** (`rtosInspector.open`) — open or reveal the
+  panel; if the debugger is already stopped, it refreshes immediately.
+- **Debug Inspector: Show Log** (`rtosInspector.showLog`) — reveal the
+  *Debug Inspector* Output channel.
+
+## Troubleshooting & logging
+
+Open **View → Output → "Debug Inspector"** (or run **"Debug Inspector: Show Log"**)
+to see what the extension is doing. The channel uses the built-in `log` language
+id so the theme color-codes timestamps, severities, and values; each line is
+`YYYY-MM-DD HH:MM:SS.mmm [LEVEL] message`. Set the level with
+**`rtosInspector.logLevel`**:
+
+- **`off`** — no logging.
+- **`info`** (default) — milestones (activate, refresh, selection) **plus**
+  warnings/errors, including GDB access **failures**. Use this when a column comes
+  up empty or a `root` / `cast` / `next` doesn't resolve.
+- **`debug`** — everything: per-section resolved traversal and row counts, the
+  resolved `${selected}` / `${master}`, **every prepared GDB access string**
+  (`gdb ▸`) and **its result** (`gdb ◂`), and a line per traversal **step**. For
+  an `index_list` each hop is shown as
+  `step N: idx X → next [ root[idx].next ] = "v" → idx N`; for a `linked_list`,
+  `node N` per advance — so you can see exactly how `next` is resolved at each hop.
+
+When a cell shows a muted `-`, the underlying value was unreadable (GDB errors
+like `cannot access memory`, `optimized out`, `no symbol`) or a NULL pointer
+(`0x0`). The raw value is preserved underneath, so sorting, summaries, and
+change-detection still work.
 
 ## Project layout
 
@@ -316,27 +457,16 @@ Extension Development Host.
 ## Try the example
 
 Open `test-workspace/` as a folder. It contains `threads_demo.c` — a tiny demo
-with **two processes**, each owning its own thread / semaphore / mutex lists,
-plus an independent timer array. The matching `rtos-inspector.json` wires this as
-**master–detail**: a `processes` tab plus `threads`/`semaphores`/`mutexes` detail
-tabs (via `${selected}`) and a standalone `timers` array tab — click a process
-row to drill into its lists. The `.vscode/{launch,tasks}.example.json` templates
-(copy to `launch.json`/`tasks.json` and set your toolchain path) include Cygwin
-GDB tips in comments.
-
-## Troubleshooting
-
-Open **View → Output → "Debug Inspector"** (or run **"Debug Inspector: Show Log"**)
-to see what the extension is doing. Set the level with the **`rtosInspector.logLevel`**
-setting (`off` / `info` / `debug`):
-
-- `info` — milestones (refresh, master/selection) plus GDB access **failures**
-  (warnings) — handy when a column is empty or a `root`/`cast`/`next` doesn't
-  resolve.
-- `debug` — everything: per-section row counts/columns, the resolved
-  `${selected}`/`${master}`, **every prepared GDB access string + result**, and a
-  line per traversal **step** (for `index_list`, each hop:
-  `idx → next [ root[idx].next ] = "v" → idx N`).
+with **two processes** (`init`, `worker`), each owning its own thread / semaphore
+/ mutex lists, plus an independent timer array and several `void*`/index examples.
+The matching `rtos-inspector.json` wires it up as **master-detail** (a `processes`
+tab plus `threads` / `mutexes` detail tabs via `${selected}`), **grouping**
+(`semaphores` and `procSlots` grouped under `processes` via `${master}`), an
+`array` timer tab, and `cast` / `wrap` / `index_list` examples (`widgets`,
+`slots`, `boxes`, `pool`). Click a process row to drill into its lists, or open
+the Semaphores tab to see every process's semaphores as a tree. The
+`.vscode/{launch,tasks}.example.json` templates (copy to `launch.json` /
+`tasks.json` and set your toolchain path) include Cygwin GDB tips in comments.
 
 ## License
 

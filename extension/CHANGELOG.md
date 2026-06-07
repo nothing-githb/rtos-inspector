@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.18.4] - 2026-06-06
+
+### Other
+- Reworked both READMEs (root + Marketplace) to be more detailed yet clearer and
+  more scannable: a complete config-schema table, a per-mode walkthrough,
+  master–detail vs. grouping, `cast`/`wrap`/field-hop and placeholder semantics,
+  a settings table, and a logging/troubleshooting guide. Documentation only;
+  every claim verified against the source.
+
 ## [0.18.3] - 2026-06-06
 
 ### Other
