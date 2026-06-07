@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.24.1] - 2026-06-06
+
+### Added
+- A section can set **`"hidden": true`** in config to start its tab hidden (show
+  it later from the ▤ Sections menu). The config default applies until you change
+  section visibility in the UI, after which your choice is remembered. The demo's
+  `boxes` section starts hidden.
+
 ## [0.24.0] - 2026-06-06
 
 ### Added

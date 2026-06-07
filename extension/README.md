@@ -28,7 +28,8 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 - **Hide columns by default.** Mark a field `"hidden": true` to start it collapsed
   (and unfetched) until you enable it from the ▦ Columns menu.
 - **Manage sections (tabs).** Hide/show whole sections from the **▤ Sections** menu
-  and **drag tabs** to reorder — remembered per workspace.
+  and **drag tabs** to reorder — remembered per workspace. A section can also start
+  hidden with `"hidden": true` in config.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0` is flagged red, `Waiting > 0` amber, plus a summary line per tab.
 - **Read-only & safe.** Debug Inspector only *reads* your data — it never calls functions or writes your program's memory, so program state is never disturbed.
 - **Leveled, color-coded logging.** A *Debug Inspector* Output channel (rendered with the `log` syntax so timestamps/severities/values are colorized); pick `off` / `info` / `debug`.
@@ -66,6 +67,7 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 | `wrap`    | all                         | Template that transforms the **element** before field access; `${expr}` is the element. |
 | `label`   | master sections             | Expression evaluated on the master element to title each tree node when another section groups by this one. |
 | `groupBy` | grouping sections           | Names a master section; renders this section as a collapsible tree, one group per master element (use `${master}` in `root`/`head`/`count`/`nil`). |
+| `hidden`  | all                         | `true` starts this section's tab hidden (until shown from the ▤ Sections menu). Ignored once you change section visibility in the UI. |
 | `max`     | all                         | Traversal upper bound / safety guard (default `1024`). |
 | `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), and/or `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (render as a usage bar — `expr` = used, `max` = total). |
 

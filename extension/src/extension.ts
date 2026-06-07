@@ -21,6 +21,7 @@ interface SectionCfg {
   wrap?: string;      // elemanı field'a erişmeden ÖNCE sarmala; ${expr}=eleman. Örn "((T*)${expr})" -> ((T*)(elem))->field
   label?: string;     // (master) ağaç düğüm başlığı için ifade; groupBy hedefi bunu kullanır
   groupBy?: string;   // bu bölümü adı verilen master bölüme göre ağaç olarak grupla; root'ta ${master}
+  hidden?: boolean;   // bölüm (sekme) başlangıçta gizli (kullanıcı Sections menüsünde seçim yapana kadar)
   max?: number;
   fields: FieldCfg[];
 }
@@ -73,7 +74,7 @@ let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: Record<string, ColPref> = {};
 const COLPREF_KEY = 'rtosInspector.columnPrefs';
-let sectionPrefs: { order: string[]; hidden: string[] } = { order: [], hidden: [] };  // sekme sırası + gizli sekmeler
+let sectionPrefs: { order: string[]; hidden: string[]; touched?: boolean } = { order: [], hidden: [] };  // sekme sırası + gizli sekmeler; touched=kullanıcı seçim yaptı (config hidden artık yoksayılır)
 const SECPREF_KEY = 'rtosInspector.sectionPrefs';
 let paused = false;                         // duraklatılınca durakta otomatik yenileme yapılmaz
 const PAUSED_KEY = 'rtosInspector.paused';
@@ -84,7 +85,7 @@ const PAUSED_KEY = 'rtosInspector.paused';
 export function activate(context: vscode.ExtensionContext) {
   extContext = context;
   columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
-  sectionPrefs = context.workspaceState.get<{ order: string[]; hidden: string[] }>(SECPREF_KEY) ?? { order: [], hidden: [] };
+  sectionPrefs = context.workspaceState.get<{ order: string[]; hidden: string[]; touched?: boolean }>(SECPREF_KEY) ?? { order: [], hidden: [] };
   paused = context.workspaceState.get<boolean>(PAUSED_KEY) ?? false;
 
   logChannel = vscode.window.createOutputChannel('Debug Inspector', 'log'); // 'log' dili = renkli
@@ -558,7 +559,10 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   // sekme sırası (sectionPrefs.order) + yeni eklenenler sona; gizli sekmeler
   const order = (sectionPrefs.order || []).filter(n => allNames.includes(n));
   for (const n of allNames) if (!order.includes(n)) order.push(n);
-  const hiddenSet = new Set((sectionPrefs.hidden || []).filter(n => allNames.includes(n)));
+  // gizli sekmeler: kullanıcı Sections menüsünde seçim yaptıysa (touched) onun listesi; yoksa config "hidden":true
+  const configHidden = secs.filter(s => s.cfg.hidden).map(s => s.name);
+  const hiddenNames = sectionPrefs.touched ? (sectionPrefs.hidden || []) : configHidden;
+  const hiddenSet = new Set(hiddenNames.filter(n => allNames.includes(n)));
   // gruplama hedefi olan master'lar gizli olsa bile toplanmalı
   const masterTargets = new Set(secs.filter(s => isGrouped(s.cfg)).map(s => s.cfg.groupBy));
   log?.info(`refresh: ${secs.length} section(s); visible=[${order.filter(n => !hiddenSet.has(n)).join(', ')}] hidden=[${[...hiddenSet].join(', ')}]`);
@@ -623,7 +627,8 @@ function openPanel(context: vscode.ExtensionContext) {
       } else if (msg?.type === 'setSections') {
         sectionPrefs = {
           order: Array.isArray(msg.order) ? msg.order : [],
-          hidden: Array.isArray(msg.hidden) ? msg.hidden : []
+          hidden: Array.isArray(msg.hidden) ? msg.hidden : [],
+          touched: true   // kullanıcı seçim yaptı: bundan sonra config "hidden" yoksayılır
         };
         log?.debug(`webview: setSections order=[${sectionPrefs.order.join(', ')}] hidden=[${sectionPrefs.hidden.join(', ')}]`);
         extContext?.workspaceState.update(SECPREF_KEY, sectionPrefs);

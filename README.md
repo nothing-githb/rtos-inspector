@@ -41,7 +41,7 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   collapsed (and unfetched) until you enable it from the ▦ Columns menu.
 - **Manage sections (tabs).** Hide/show whole sections from the **▤ Sections**
   menu and **drag tabs** to reorder — remembered per workspace (hidden sections
-  aren't fetched).
+  aren't fetched). A section can also start hidden with `"hidden": true` in config.
 - **Arbitrary root expressions** — anything valid in GDB, e.g.
   `g_kernel.pools[0]->thread_list`.
 - **Generic `void*` buffers.** Reinterpret an untyped buffer as a typed array
@@ -149,6 +149,7 @@ Every field, across all modes:
 | `wrap`    | all | — | Template that transforms the **element** before field access; `${expr}` = the element. |
 | `label`   | master sections | row key | Expression titling each tree node when another section groups by this one. |
 | `groupBy` | grouping sections | — | Name of a master section; renders this section as a tree in its own tab. Use `${master}` in `root`. |
+| `hidden`  | all | `false` | Start this section's tab hidden (until you show it from the ▤ Sections menu). Ignored once you change section visibility in the UI. |
 | `max`     | all | `1024` | Traversal upper bound (array loop cap; cycle/length guard for the lists). |
 
 #### `cast` — reinterpret a buffer (written in full)

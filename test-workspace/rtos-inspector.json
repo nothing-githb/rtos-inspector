@@ -82,11 +82,12 @@
     ]
   },
 
-  "//boxes": "cast'ten ÖNCE bir field hop: her g_boxes gözü {void *data}. wrap ile asıl veriye 'data' ile ulaşılıp cast edilir: ((widget_t *)(elem.data))->field.",
+  "//boxes": "cast'ten ÖNCE bir field hop: her g_boxes gözü {void *data}. wrap ile asıl veriye 'data' ile ulaşılıp cast edilir: ((widget_t *)(elem.data))->field. 'hidden':true ile sekme başlangıçta GİZLİ (▤ Sections menüsünden açılır).",
   "boxes": {
     "mode": "array",
     "root": "g_boxes",
     "count": "3",
+    "hidden": true,
     "wrap": "((widget_t *)(${expr}.data))",
     "access": "->",
     "fields": [
