@@ -45,6 +45,16 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 - **Live updates** on every stop, with a `running…` badge while the program runs
   and a `paused` pill when paused.
 - **Sortable columns** — numeric/hex sorts numerically, text sorts alphabetically.
+- **Filter & changed-only** — a per-tab filter box narrows rows as you type
+  (focus-preserving); a **Changed** toggle shows only rows that moved since the
+  last stop.
+- **Copy out** — copy the (filtered) table as **CSV** or **Markdown** with one
+  click (grouped tables add a `Group` column).
+- **Number base** — flip numeric/hex columns between raw → decimal → hex;
+  numeric columns are right-aligned with tabular figures.
+- **Sticky header & frozen first column** — the header stays on vertical scroll
+  and the first (id) column stays on horizontal scroll; long cells ellipsize with
+  the full value in a tooltip.
 - **Change highlighting** — changed cells are amber, with the previous value shown
   faded and struck-through next to the new one, plus an `N changed` badge.
 - **Pick & reorder columns** — drag a header (blue drop indicator + drag-preview

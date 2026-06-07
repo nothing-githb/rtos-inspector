@@ -619,6 +619,9 @@ function openPanel(context: vscode.ExtensionContext) {
         selectedKey = typeof msg.key === 'string' ? msg.key : undefined;
         log?.debug(`webview: selectMaster ${selectedMaster}[key=${selectedKey}]`);
         doRefresh();   // detay bölümleri seçili elemana göre yeniden çek
+      } else if (msg?.type === 'copy' && typeof msg.text === 'string') {
+        vscode.env.clipboard.writeText(msg.text);
+        log?.debug(`webview: copied ${msg.text.length} chars to clipboard`);
       }
     },
     null,
@@ -761,6 +764,30 @@ function getHtml(): string {
     font-size: 11px; opacity: 0.85; margin-left: 6px; padding: 0 6px; border-radius: 999px;
     background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-weight: 600;
   }
+
+  /* per-tab tablo araç çubuğu: filtre / changed-only / sayı tabanı / kopya */
+  .tbl-bar { display: flex; align-items: center; gap: 6px; margin: 10px 2px 8px; flex-wrap: wrap; }
+  .tbl-filter {
+    flex: 0 0 210px; font-family: inherit; font-size: 12px; padding: 4px 9px; border-radius: 6px;
+    border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+    background: var(--vscode-input-background, transparent);
+    color: var(--vscode-input-foreground, var(--vscode-foreground));
+  }
+  .tbl-filter::placeholder { color: var(--vscode-input-placeholderForeground, rgba(128,128,128,0.7)); }
+  .btn.on { background: rgba(59,158,255,0.22); border-color: #3b9eff; color: var(--vscode-foreground); }
+
+  /* sayısal kolonlar sağa hizalı + tabular; uzun hücrelerde ellipsis (tam değer title'da) */
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+  tr.grphdr td { max-width: none; overflow: visible; }
+
+  /* ilk kolonu yatay kaydırmada dondur (başlık zaten dikeyde yapışkan) */
+  th:first-child, td:first-child { position: sticky; left: 0; }
+  td:first-child { background: var(--vscode-editor-background); z-index: 1; }
+  th:first-child { z-index: 3; }
+  tbody tr:hover td:first-child { background: var(--vscode-list-hoverBackground); }
+  tbody tr.selected td:first-child { background: rgba(59,158,255,0.16); }
+  tr.grphdr td:first-child { background: var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.13)); }
 
   .badge { font-size: 11px; padding: 2px 9px; border-radius: 5px; font-weight: 600; display: inline-block; }
   .s-run   { background: rgba(46,204,113,0.18); color: #2ecc71; }
@@ -962,12 +989,93 @@ function getHtml(): string {
     return { map, count };
   }
 
-  function headerCells(columns, sortCol, sortDir) {
+  // --- sayısal kolon algısı + hex/dec biçimleme ---
+  function isNumStr(v) { const t = String(v).trim(); return /^-?\d+$/.test(t) || /^0x[0-9a-fA-F]+$/.test(t); }
+  function toIntVal(v) { const t = String(v).trim(); if (/^0x[0-9a-fA-F]+$/.test(t)) return parseInt(t, 16); if (/^-?\d+$/.test(t)) return parseInt(t, 10); return null; }
+  function fmtNum(v, base) {
+    if (!base || base === 'raw') return v;
+    const n = toIntVal(v); if (n === null) return v;
+    if (base === 'hex') return (n < 0 ? '-0x' + (-n).toString(16) : '0x' + n.toString(16));
+    return String(n); // dec
+  }
+  function numericCols(columns, rows) {
+    const set = {};
+    for (const c of columns) {
+      let n = 0, tot = 0;
+      for (const r of rows) { const v = r[c]; if (v == null || v === '' || isDash(v)) continue; tot++; if (isNumStr(v)) n++; }
+      if (tot > 0 && n / tot >= 0.6) set[c] = true;
+    }
+    return set;
+  }
+  // --- araç çubuğu (filtre / changed-only / sayı tabanı / kopya) ---
+  function toolbarHtml(st, hasNum) {
+    let h = '<div class="tbl-bar">';
+    h += '<input class="tbl-filter" type="text" placeholder="Filter rows…" value="' + esc(st.filter || '') + '">';
+    if (st.sec.grouped) h += '<button class="btn grp-toggle">' + (st.flat ? '⊞ Tree' : '☰ Flat') + '</button>';
+    else if (st.changeCount > 0) h += '<button class="btn chg-only' + (st.changedOnly ? ' on' : '') + '" title="Show only changed rows">Δ Changed</button>';
+    if (hasNum) {
+      const lbl = st.numBase === 'hex' ? '0x' : (st.numBase === 'dec' ? '10' : '#');
+      h += '<button class="btn num-base" title="Number base: raw → dec → hex">' + lbl + '</button>';
+    }
+    h += '<span class="grow"></span>';
+    h += '<button class="btn copy-csv" title="Copy table as CSV">⧉ CSV</button>';
+    h += '<button class="btn copy-md" title="Copy table as Markdown">⧉ MD</button>';
+    h += '</div>';
+    return h;
+  }
+  // filtre + changed-only'i DOM'da gizleyerek uygula (yeniden çizim yok -> input odağı korunur)
+  function applyFilter(name) {
+    const st = secState[name]; const body = bodyEl(name);
+    if (!st || !body) return;
+    const f = (st.filter || '').trim().toLowerCase();
+    const tb = body.querySelector('tbody'); if (!tb) return;
+    const chgOnly = st.changedOnly && !st.sec.grouped && st.changeCount > 0;
+    let grp = null, grpVisible = false;
+    const finalize = () => { if (grp) grp.style.display = grpVisible ? '' : 'none'; };
+    for (const tr of tb.children) {
+      if (tr.classList.contains('grphdr')) { finalize(); grp = tr; grpVisible = false; continue; }
+      let show = true;
+      if (f && tr.textContent.toLowerCase().indexOf(f) === -1) show = false;
+      if (show && chgOnly && !tr.querySelector('td.changed')) show = false;
+      tr.style.display = show ? '' : 'none';
+      if (show) grpVisible = true;
+    }
+    finalize();
+  }
+  function flashBtn(b) { const t = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = t; }, 1200); }
+  // görünen satırlardan CSV/Markdown üret -> panoya kopyala (extension)
+  function copyTable(name, fmt) {
+    const st = secState[name]; const body = bodyEl(name);
+    const tbl = body && body.querySelector('table'); if (!tbl) return;
+    const heads = [].map.call(tbl.querySelectorAll('thead th'), th => th.textContent.replace(/[▲▼]/g, '').trim());
+    const grouped = st.sec.grouped && !st.flat;
+    const out = []; let grp = '';
+    for (const tr of tbl.querySelectorAll('tbody tr')) {
+      if (tr.style.display === 'none') continue;
+      if (tr.classList.contains('grphdr')) { grp = tr.textContent.replace(/[▾▸]/g, '').replace(/\s+\d+\s*$/, '').trim(); continue; }
+      const cells = [].map.call(tr.children, td => { const c = td.cloneNode(true); for (const o of c.querySelectorAll('.old')) o.remove(); return c.textContent.replace(/\s+/g, ' ').trim(); });
+      out.push(grouped ? [grp].concat(cells) : cells);
+    }
+    const cols = grouped ? ['Group'].concat(heads) : heads;
+    let text;
+    if (fmt === 'csv') {
+      const q = s => /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      text = [cols].concat(out).map(r => r.map(q).join(',')).join('\n');
+    } else {
+      text = '| ' + cols.join(' | ') + ' |\n| ' + cols.map(() => '---').join(' | ') + ' |\n' +
+        out.map(r => '| ' + r.join(' | ') + ' |').join('\n');
+    }
+    vscodeApi.postMessage({ type: 'copy', text: text });
+  }
+
+  function headerCells(columns, sortCol, sortDir, numCols) {
+    numCols = numCols || {};
     let h = '';
     for (const c of columns) {
       const active = c === sortCol;
       const ind = active ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '';
-      h += '<th class="' + (active ? 'sorted' : '') + '" data-col="' + esc(c) + '" draggable="true" ' +
+      const cls = ((active ? 'sorted' : '') + (numCols[c] ? ' num' : '')).trim();
+      h += '<th class="' + cls + '" data-col="' + esc(c) + '" draggable="true" ' +
         'title="Click: sort  ·  Drag: reorder  ·  Right-click: columns">' +
         esc(c) + '<span class="sort-ind">' + ind + '</span></th>';
     }
@@ -982,7 +1090,10 @@ function getHtml(): string {
     }
     return rows;
   }
-  function dataRow(columns, row, changed, selectable, selectedKey) {
+  function dataRow(columns, row, changed, selectable, selectedKey, opts) {
+    opts = opts || {};
+    const numCols = opts.numCols || {};
+    const base = opts.base || 'raw';
     const rk = rowKeyOf(row, columns);
     const trCls = [];
     if (selectable) trCls.push('selrow');
@@ -991,30 +1102,33 @@ function getHtml(): string {
     for (const c of columns) {
       const ck = rk + '\\u0000' + c;
       const isChg = changed && Object.prototype.hasOwnProperty.call(changed, ck);
+      const raw = row[c] ?? '';
+      const disp = (numCols[c] && !isDash(raw)) ? fmtNum(raw, base) : raw;
       const classes = [];
       if (isMono(c)) classes.push('mono');
+      if (numCols[c]) classes.push('num');
       if (isChg) classes.push('changed');
       const clsAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
-      let inner = cell(c, row[c] ?? '');
+      let inner = cell(c, disp);
       if (isChg) {
         const ov = isDash(changed[ck]) ? '-' : changed[ck];
         inner += '<span class="old" title="previous value">' + esc(ov) + '</span>';
       }
-      h += '<td' + clsAttr + '>' + inner + '</td>';
+      h += '<td' + clsAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
     }
     return h + '</tr>';
   }
-  function buildTable(columns, rows, sortCol, sortDir, changed, selectable, selectedKey) {
+  function buildTable(columns, rows, sortCol, sortDir, changed, selectable, selectedKey, opts) {
     if (!rows.length) return '<div class="empty">List is empty (root is NULL or count is 0).</div>';
     const data = sortRows(rows, columns, sortCol, sortDir);
-    let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir) + '</tr></thead><tbody>';
-    for (const row of data) h += dataRow(columns, row, changed, selectable, selectedKey);
+    let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir, opts && opts.numCols) + '</tr></thead><tbody>';
+    for (const row of data) h += dataRow(columns, row, changed, selectable, selectedKey, opts);
     return h + '</tbody></table>';
   }
   // groupBy: master düğümleri + altında satırlar (aç/kapa)
-  function buildGroupedTable(columns, groups, collapsed, sortCol, sortDir) {
+  function buildGroupedTable(columns, groups, collapsed, sortCol, sortDir, opts) {
     if (!groups || !groups.length) return '<div class="empty">No groups (master section is empty).</div>';
-    let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir) + '</tr></thead><tbody>';
+    let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir, opts && opts.numCols) + '</tr></thead><tbody>';
     for (const g of groups) {
       const isCol = collapsed.indexOf(g.key) !== -1;
       h += '<tr class="grphdr" data-grp="' + esc(g.key) + '"><td colspan="' + columns.length + '">' +
@@ -1022,7 +1136,7 @@ function getHtml(): string {
         ' <span class="grpcnt">' + g.rows.length + '</span></td></tr>';
       if (!isCol) {
         const data = sortRows(g.rows, columns, sortCol, sortDir);
-        for (const row of data) h += dataRow(columns, row, null, false, null);
+        for (const row of data) h += dataRow(columns, row, null, false, null, opts);
       }
     }
     return h + '</tbody></table>';
@@ -1045,21 +1159,22 @@ function getHtml(): string {
       return;
     }
     const cols = displayCols(st);
+    const grouped = st.sec.grouped;
+    const allRows = grouped ? st.sec.groups.reduce((a, g) => a.concat(g.rows), []) : st.sec.rows;
+    const numCols = numericCols(cols, allRows);
+    const opts = { numCols: numCols, base: st.numBase || 'raw' };
     const summary = '<div class="summary">' + esc(st.sec.summary) + '</div>';
-    if (st.sec.grouped) {
-      const toggle = '<div class="grp-bar"><button class="btn grp-toggle">' +
-        (st.flat ? '⊞ Tree view' : '☰ Flat view') + '</button></div>';
-      if (st.flat) {
-        const all = [];
-        for (const g of st.sec.groups) for (const r of g.rows) all.push(r);
-        body.innerHTML = summary + toggle + buildTable(cols, all, st.sortCol, st.sortDir, null, false, null);
-      } else {
-        body.innerHTML = summary + toggle + buildGroupedTable(cols, st.sec.groups, st.collapsed || [], st.sortCol, st.sortDir);
-      }
-      return;
+    const bar = toolbarHtml(st, Object.keys(numCols).length > 0);
+    let table;
+    if (grouped && !st.flat) {
+      table = buildGroupedTable(cols, st.sec.groups, st.collapsed || [], st.sortCol, st.sortDir, opts);
+    } else if (grouped && st.flat) {
+      table = buildTable(cols, allRows, st.sortCol, st.sortDir, null, false, null, opts);
+    } else {
+      table = buildTable(cols, st.sec.rows, st.sortCol, st.sortDir, st.changed, st.sec.selectable, st.sec.selectedKey, opts);
     }
-    body.innerHTML = summary +
-      buildTable(cols, st.sec.rows, st.sortCol, st.sortDir, st.changed, st.sec.selectable, st.sec.selectedKey);
+    body.innerHTML = summary + bar + table;
+    applyFilter(name);   // korunan filtre/changed-only'i taze DOM'a uygula
   }
 
   function buildColsMenu(name) {
@@ -1102,7 +1217,10 @@ function getHtml(): string {
     }
     const flat = !!(prev && prev.flat);
     const collapsed = (prev && prev.collapsed) ? prev.collapsed : [];
-    secState[name] = { sec, sortCol, sortDir, changed, changeCount: count, order, hidden, flat, collapsed };
+    const filter = (prev && prev.filter) ? prev.filter : '';
+    const changedOnly = !!(prev && prev.changedOnly);
+    const numBase = (prev && prev.numBase) ? prev.numBase : 'raw';
+    secState[name] = { sec, sortCol, sortDir, changed, changeCount: count, order, hidden, flat, collapsed, filter, changedOnly, numBase };
     const cnt = cntElOf(name);
     if (cnt) cnt.textContent = sec.grouped ? (sec.groups || []).reduce((a, g) => a + g.rows.length, 0) : sec.rows.length;
     const tab = tabElOf(name);
@@ -1168,6 +1286,15 @@ function getHtml(): string {
       if (st) { st.flat = !st.flat; paint(name); }
       return;
     }
+    // araç çubuğu: changed-only / sayı tabanı / kopya
+    const chgBtn = e.target.closest('.chg-only');
+    if (chgBtn) { const name = paneName(e); const st = secState[name]; if (st) { st.changedOnly = !st.changedOnly; chgBtn.classList.toggle('on', st.changedOnly); applyFilter(name); } return; }
+    const numBtn = e.target.closest('.num-base');
+    if (numBtn) { const name = paneName(e); const st = secState[name]; if (st) { st.numBase = st.numBase === 'hex' ? 'raw' : (st.numBase === 'dec' ? 'hex' : 'dec'); paint(name); } return; }
+    const csvBtn = e.target.closest('.copy-csv');
+    if (csvBtn) { copyTable(paneName(e), 'csv'); flashBtn(csvBtn); return; }
+    const mdBtn = e.target.closest('.copy-md');
+    if (mdBtn) { copyTable(paneName(e), 'md'); flashBtn(mdBtn); return; }
     // grup başlığı: aç/kapa
     const grphdr = e.target.closest('tr.grphdr');
     if (grphdr) {
@@ -1201,6 +1328,16 @@ function getHtml(): string {
         vscodeApi.postMessage({ type: 'selectMaster', section: name, key: tr.dataset.key });
       }
     }
+  });
+
+  // filtre kutusu: yalnız DOM'da gizle (yeniden çizim yok -> odak korunur)
+  panesEl.addEventListener('input', e => {
+    const inp = e.target.closest('.tbl-filter');
+    if (!inp) return;
+    const name = paneName(e); const st = secState[name];
+    if (!st) return;
+    st.filter = inp.value;
+    applyFilter(name);
   });
 
   panesEl.addEventListener('change', e => {

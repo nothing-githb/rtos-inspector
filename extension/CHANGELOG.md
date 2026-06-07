@@ -2,6 +2,21 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.20.0] - 2026-06-06
+
+### Added
+- **Per-tab table toolbar:**
+  - **Filter box** — live-filter rows by text across visible columns; focus is
+    preserved while typing, and grouped tabs hide groups that become empty.
+  - **Changed-only** toggle — show only rows that changed since the last stop.
+  - **Number base** toggle — render numeric/hex columns as raw → decimal → hex.
+  - **Copy CSV / Copy Markdown** — copy the (filtered) table to the clipboard
+    (grouped tables include a leading `Group` column).
+- **Frozen first column** on horizontal scroll (the header already stuck on
+  vertical scroll).
+- Numeric/hex columns are **right-aligned** with tabular figures; long cells are
+  ellipsized with the **full value shown in a tooltip**.
+
 ## [0.19.3] - 2026-06-06
 
 ### Changed
