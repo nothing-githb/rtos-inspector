@@ -52,9 +52,8 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   click (grouped tables add a `Group` column).
 - **Number base** — flip numeric/hex columns between raw → decimal → hex;
   numeric columns are right-aligned with tabular figures.
-- **Sticky header & frozen first column** — the header stays on vertical scroll
-  and the first (id) column stays on horizontal scroll; long cells ellipsize with
-  the full value in a tooltip.
+- **Sticky header & full-value tooltips** — the header stays put on vertical
+  scroll, and hovering any cell shows its full value in a tooltip.
 - **Change highlighting** — changed cells are amber, with the previous value shown
   faded and struck-through next to the new one, plus an `N changed` badge.
 - **Pick & reorder columns** — drag a header (blue drop indicator + drag-preview

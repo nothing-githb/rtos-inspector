@@ -776,18 +776,8 @@ function getHtml(): string {
   .tbl-filter::placeholder { color: var(--vscode-input-placeholderForeground, rgba(128,128,128,0.7)); }
   .btn.on { background: rgba(59,158,255,0.22); border-color: #3b9eff; color: var(--vscode-foreground); }
 
-  /* sayısal kolonlar sağa hizalı + tabular; uzun hücrelerde ellipsis (tam değer title'da) */
+  /* sayısal kolonlar sağa hizalı + tabular figürler (tam değer her hücrede title'da) */
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tbody td { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
-  tr.grphdr td { max-width: none; overflow: visible; }
-
-  /* ilk kolonu yatay kaydırmada dondur (başlık zaten dikeyde yapışkan) */
-  th:first-child, td:first-child { position: sticky; left: 0; }
-  td:first-child { background: var(--vscode-editor-background); z-index: 1; }
-  th:first-child { z-index: 3; }
-  tbody tr:hover td:first-child { background: var(--vscode-list-hoverBackground); }
-  tbody tr.selected td:first-child { background: rgba(59,158,255,0.16); }
-  tr.grphdr td:first-child { background: var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.13)); }
 
   .badge { font-size: 11px; padding: 2px 9px; border-radius: 5px; font-weight: 600; display: inline-block; }
   .s-run   { background: rgba(46,204,113,0.18); color: #2ecc71; }

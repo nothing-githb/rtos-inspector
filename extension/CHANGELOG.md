@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.20.1] - 2026-06-06
+
+### Fixed
+- Reverted two 0.20.0 CSS changes that could distort the panel layout: the
+  per-cell `max-width`/ellipsis and the document-level sticky first column. The
+  filter box, changed-only toggle, number-base toggle, Copy CSV/MD, numeric
+  right-alignment, and full-value cell tooltips are unchanged. (A robust frozen
+  first column will return later via a dedicated scroll container.)
+
 ## [0.20.0] - 2026-06-06
 
 ### Added
