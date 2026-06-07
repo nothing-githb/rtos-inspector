@@ -5,7 +5,7 @@ import * as path from 'path';
 // ---------------------------------------------------------------------------
 // Tipler
 // ---------------------------------------------------------------------------
-interface FieldCfg { label: string; expr: string; }
+interface FieldCfg { label: string; expr: string; hidden?: boolean; }   // hidden: başlangıçta gizli (kayıtlı tercih yoksa)
 interface SectionCfg {
   mode: 'linked_list' | 'array' | 'index_list';
   root: string;
@@ -27,9 +27,7 @@ type Row = Record<string, string>;
 interface Group { label: string; key: string; rows: Row[]; }
 interface Section {
   name: string; columnsAll: string[]; hidden: string[]; rows: Row[]; summary: string;
-  selectable?: boolean;       // master bölüm: satırları tıklanabilir
-  selectedKey?: string;       // seçili master satırının anahtarı (ilk kolon değeri)
-  needsSelection?: boolean;   // detay bölüm: henüz seçim yok
+  needsSelection?: boolean;   // gruplu bölüm: master bölüm boş/bulunamadı
   grouped?: boolean;          // groupBy ile ağaç olarak gruplanmış
   groups?: Group[];           // her master elemanı için bir grup
 }
@@ -72,8 +70,6 @@ let columnPrefs: Record<string, ColPref> = {};
 const COLPREF_KEY = 'rtosInspector.columnPrefs';
 let paused = false;                         // duraklatılınca durakta otomatik yenileme yapılmaz
 const PAUSED_KEY = 'rtosInspector.paused';
-let selectedMaster: string | undefined;     // master-detail: seçili master bölüm adı
-let selectedKey: string | undefined;        // seçili master satırının anahtarı
 
 // ---------------------------------------------------------------------------
 // Aktivasyon
@@ -389,7 +385,8 @@ function extractSections(cfg: SyncCfg): Array<{ name: string; cfg: SectionCfg }>
 // ---------------------------------------------------------------------------
 // Sütun tercihleri: kayıtlı sıra/gizli + config alanlarını birleştir
 // ---------------------------------------------------------------------------
-function effectiveColumns(section: string, allLabels: string[]): { order: string[]; hidden: string[]; active: string[] } {
+function effectiveColumns(section: string, fields: FieldCfg[]): { order: string[]; hidden: string[]; active: string[] } {
+  const allLabels = fields.map(f => f.label);
   const pref = columnPrefs[section];
   let order: string[];
   let hidden: string[];
@@ -399,7 +396,7 @@ function effectiveColumns(section: string, allLabels: string[]): { order: string
     hidden = (pref.hidden ?? []).filter(l => allLabels.includes(l));
   } else {
     order = allLabels.slice();
-    hidden = [];
+    hidden = fields.filter(f => f.hidden).map(f => f.label);   // config: "hidden": true olan alanlar başlangıçta gizli
   }
   const active = order.filter(l => !hidden.includes(l));
   return { order, hidden, active };
@@ -413,8 +410,7 @@ async function buildSection(
   cursor: string,
   name: string
 ): Promise<Section> {
-  const allLabels = cfg.fields.map(f => f.label);
-  const eff = effectiveColumns(name, allLabels);
+  const eff = effectiveColumns(name, cfg.fields);
   const effFields = eff.active
     .map(l => cfg.fields.find(f => f.label === l))
     .filter((f): f is FieldCfg => !!f);
@@ -424,12 +420,8 @@ async function buildSection(
 }
 
 // ---------------------------------------------------------------------------
-// Master-detail: ${selected} yer tutucusu
+// Gruplama (ağaç): ${master} yer tutucusu + master elemanı seçici
 // ---------------------------------------------------------------------------
-function isDetail(cfg: SectionCfg): boolean {
-  const has = (s?: string) => typeof s === 'string' && s.indexOf('${selected}') !== -1;
-  return has(cfg.root) || has(cfg.head) || has(cfg.count);   // ${selected} root/head/count'ta olabilir
-}
 // Master satırın elemanını yeniden seçen ifade (tip-güvenli, adres/cast gerektirmez)
 function selectorExpr(cfg: SectionCfg, index: number): string {
   // collectSection'daki eleman üretimiyle birebir: cast + wrap DAHİL işlenmiş eleman
@@ -446,10 +438,6 @@ function selectorExpr(cfg: SectionCfg, index: number): string {
   if (cfg.wrap) elem = cfg.wrap.split('${expr}').join('(' + elem + ')');
   return elem;
 }
-function substituteSel(expr: string, sel: string): string {
-  return expr.split('${selected}').join('(' + sel + ')');
-}
-// Gruplama (ağaç): ${master} yer tutucusu
 function isGrouped(cfg: SectionCfg): boolean {
   return typeof cfg.groupBy === 'string' && cfg.groupBy.length > 0;
 }
@@ -478,8 +466,7 @@ async function buildGrouped(
   scfg: SectionCfg,
   masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }>
 ): Promise<Section> {
-  const allLabels = scfg.fields.map(f => f.label);
-  const eff = effectiveColumns(name, allLabels);
+  const eff = effectiveColumns(name, scfg.fields);
   const effFields = eff.active
     .map(l => scfg.fields.find(f => f.label === l))
     .filter((f): f is FieldCfg => !!f);
@@ -527,57 +514,23 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   } catch { /* ignore */ }
 
   const secs = extractSections(cfg);
-  const hasDetail = secs.some(s => isDetail(s.cfg));
-  log?.info(`refresh: ${secs.length} section(s) [${secs.map(s => s.name).join(', ')}]${hasDetail ? ' (master-detail)' : ''}`);
+  log?.info(`refresh: ${secs.length} section(s) [${secs.map(s => s.name).join(', ')}]`);
 
-  // 1. geçiş: master/bağımsız bölümleri (detay/grup olmayan) topla + satır seçim ifadeleri
+  // 1. geçiş: gruplanmayan (bağımsız/master) bölümleri topla; gruplama için satır seçim ifadeleri sakla
   const masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
   for (let i = 0; i < secs.length; i++) {
     const { name, cfg: scfg } = secs[i];
-    if (isDetail(scfg) || isGrouped(scfg)) continue;
+    if (isGrouped(scfg)) continue;
     const sec = await buildSection(session, scfg, frameId, '$ri_' + i, name);
-    if (hasDetail) sec.selectable = true;
     masters[name] = { sec, selExprs: sec.rows.map((_, idx) => selectorExpr(scfg, idx)), cfg: scfg };
   }
 
-  // Seçimi çöz -> ${selected} ifadesi
-  let selExpr: string | undefined;
-  if (hasDetail) {
-    let m = (selectedMaster && masters[selectedMaster]) ? masters[selectedMaster] : undefined;
-    if (!m) {
-      const firstName = secs.map(s => s.name).find(n => masters[n] && masters[n].sec.rows.length);
-      if (firstName) { selectedMaster = firstName; m = masters[firstName]; selectedKey = rowKeyAt(m.sec, 0); }
-    }
-    if (m && m.sec.rows.length) {
-      const fa = firstActiveLabel(m.sec);
-      let idx = (fa && selectedKey != null) ? m.sec.rows.findIndex(r => r[fa] === selectedKey) : -1;
-      if (idx < 0) { idx = 0; selectedKey = rowKeyAt(m.sec, 0); }
-      selExpr = m.selExprs[idx];
-      m.sec.selectedKey = selectedKey;
-      log?.info(`master selection: ${selectedMaster}[key=${selectedKey}] ⇒ \${selected} = ${selExpr}`);
-    }
-  }
-
-  // 2. geçiş: config sırasıyla birleştir; detay bölümleri ${selected} yerine konarak topla
+  // 2. geçiş: config sırasıyla birleştir; gruplu bölümler ${master} ile her master elemanına genişler
   const sections: Section[] = [];
   for (let i = 0; i < secs.length; i++) {
     const { name, cfg: scfg } = secs[i];
     if (isGrouped(scfg)) { sections.push(await buildGrouped(session, frameId, i, name, scfg, masters)); continue; }
-    if (!isDetail(scfg)) { sections.push(masters[name].sec); continue; }
-    const allLabels = scfg.fields.map(f => f.label);
-    const eff = effectiveColumns(name, allLabels);
-    if (!selExpr) {
-      sections.push({ name, columnsAll: eff.order, hidden: eff.hidden, rows: [], summary: '', needsSelection: true });
-      continue;
-    }
-    const subCfg: SectionCfg = {
-      ...scfg,
-      root: substituteSel(scfg.root, selExpr),
-      count: scfg.count ? substituteSel(scfg.count, selExpr) : scfg.count,
-      head: scfg.head ? substituteSel(scfg.head, selExpr) : scfg.head,
-      nil: scfg.nil ? substituteSel(scfg.nil, selExpr) : scfg.nil
-    };
-    sections.push(await buildSection(session, subCfg, frameId, '$ri_' + i, name));
+    sections.push(masters[name].sec);
   }
 
   panel.webview.postMessage({
@@ -614,11 +567,6 @@ function openPanel(context: vscode.ExtensionContext) {
         log?.info(`webview: ${paused ? 'paused' : 'resumed'}`);
         extContext?.workspaceState.update(PAUSED_KEY, paused);
         if (!paused && lastStopped) refresh(lastStopped.session, lastStopped.threadId);
-      } else if (msg?.type === 'selectMaster' && typeof msg.section === 'string') {
-        selectedMaster = msg.section;
-        selectedKey = typeof msg.key === 'string' ? msg.key : undefined;
-        log?.debug(`webview: selectMaster ${selectedMaster}[key=${selectedKey}]`);
-        doRefresh();   // detay bölümleri seçili elemana göre yeniden çek
       } else if (msg?.type === 'copy' && typeof msg.text === 'string') {
         vscode.env.clipboard.writeText(msg.text);
         log?.debug(`webview: copied ${msg.text.length} chars to clipboard`);
@@ -748,9 +696,6 @@ function getHtml(): string {
   tbody tr:hover td { background: var(--vscode-list-hoverBackground); }
   td.mono { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; opacity: 0.95; }
   td.idcol { font-weight: 700; opacity: 0.9; }
-  tbody tr.selrow td { cursor: pointer; }
-  tbody tr.selected td { background: rgba(59,158,255,0.16) !important; }
-  tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 #3b9eff; }
   .dash { opacity: 0.4; }
   .grp-bar { margin: 10px 2px 6px; }
   .grp-toggle { font-size: 11px; }
@@ -1080,15 +1025,12 @@ function getHtml(): string {
     }
     return rows;
   }
-  function dataRow(columns, row, changed, selectable, selectedKey, opts) {
+  function dataRow(columns, row, changed, opts) {
     opts = opts || {};
     const numCols = opts.numCols || {};
     const base = opts.base || 'raw';
     const rk = rowKeyOf(row, columns);
-    const trCls = [];
-    if (selectable) trCls.push('selrow');
-    if (selectable && selectedKey != null && rk === selectedKey) trCls.push('selected');
-    let h = '<tr data-key="' + esc(rk) + '"' + (trCls.length ? ' class="' + trCls.join(' ') + '"' : '') + '>';
+    let h = '<tr>';
     for (const c of columns) {
       const ck = rk + '\\u0000' + c;
       const isChg = changed && Object.prototype.hasOwnProperty.call(changed, ck);
@@ -1108,11 +1050,11 @@ function getHtml(): string {
     }
     return h + '</tr>';
   }
-  function buildTable(columns, rows, sortCol, sortDir, changed, selectable, selectedKey, opts) {
+  function buildTable(columns, rows, sortCol, sortDir, changed, opts) {
     if (!rows.length) return '<div class="empty">List is empty (root is NULL or count is 0).</div>';
     const data = sortRows(rows, columns, sortCol, sortDir);
     let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir, opts && opts.numCols) + '</tr></thead><tbody>';
-    for (const row of data) h += dataRow(columns, row, changed, selectable, selectedKey, opts);
+    for (const row of data) h += dataRow(columns, row, changed, opts);
     return h + '</tbody></table>';
   }
   // groupBy: master düğümleri + altında satırlar (aç/kapa)
@@ -1126,7 +1068,7 @@ function getHtml(): string {
         ' <span class="grpcnt">' + g.rows.length + '</span></td></tr>';
       if (!isCol) {
         const data = sortRows(g.rows, columns, sortCol, sortDir);
-        for (const row of data) h += dataRow(columns, row, null, false, null, opts);
+        for (const row of data) h += dataRow(columns, row, null, opts);
       }
     }
     return h + '</tbody></table>';
@@ -1142,10 +1084,7 @@ function getHtml(): string {
     const body = bodyEl(name);
     if (!st || !st.sec || !body) return;
     if (st.sec.needsSelection) {
-      const hint = st.sec.grouped
-        ? 'Master section for "' + esc(name) + '" is empty or missing.'
-        : 'Select a row in a master section to populate this table.';
-      body.innerHTML = '<div class="empty">' + hint + '</div>';
+      body.innerHTML = '<div class="empty">Master section for "' + esc(name) + '" is empty or missing.</div>';
       return;
     }
     const cols = displayCols(st);
@@ -1159,9 +1098,9 @@ function getHtml(): string {
     if (grouped && !st.flat) {
       table = buildGroupedTable(cols, st.sec.groups, st.collapsed || [], st.sortCol, st.sortDir, opts);
     } else if (grouped && st.flat) {
-      table = buildTable(cols, allRows, st.sortCol, st.sortDir, null, false, null, opts);
+      table = buildTable(cols, allRows, st.sortCol, st.sortDir, null, opts);
     } else {
-      table = buildTable(cols, st.sec.rows, st.sortCol, st.sortDir, st.changed, st.sec.selectable, st.sec.selectedKey, opts);
+      table = buildTable(cols, st.sec.rows, st.sortCol, st.sortDir, st.changed, opts);
     }
     body.innerHTML = summary + bar + table;
     applyFilter(name);   // korunan filtre/changed-only'i taze DOM'a uygula
@@ -1308,15 +1247,6 @@ function getHtml(): string {
       else { st.sortCol = col; st.sortDir = 'asc'; }
       paint(name);
       return;
-    }
-    // master satır seçimi (detay bölümleri günceller)
-    const tr = e.target.closest('tbody tr[data-key]');
-    if (tr) {
-      const name = paneName(e);
-      const st = secState[name];
-      if (st && st.sec && st.sec.selectable) {
-        vscodeApi.postMessage({ type: 'selectMaster', section: name, key: tr.dataset.key });
-      }
     }
   });
 

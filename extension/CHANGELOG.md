@@ -2,6 +2,23 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.21.0] - 2026-06-06
+
+### Removed
+- **Master-detail (`${selected}`).** Relate sections with **grouping**
+  (`groupBy` + `${master}`) instead — it shows every parent (and its children) at
+  once in one tab, with no row to click. The `${selected}` placeholder,
+  click-to-select, and the `selectMaster` plumbing were removed.
+
+### Added
+- A field may set **`"hidden": true`** to start collapsed and **unfetched**
+  (enable it later from the ▦ Columns menu). Applied only when there is no saved
+  column preference for that section.
+
+### Changed
+- Example config drops the `${selected}` `threads`/`mutexes` tabs; the demo `pool`
+  gains a default-hidden `Next` column.
+
 ## [0.20.2] - 2026-06-06
 
 ### Fixed

@@ -19,8 +19,12 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 - **Pause / Resume.** Stop auto-refreshing and querying GDB on each stop when you don't need it; Refresh still does a one-shot. Remembered per workspace.
 - **Change highlighting.** Cells that changed since the previous stop are amber-highlighted, with the previous value shown faded and struck-through next to the new one. A `N changed` badge shows the total; tabs that changed in the background flag their count.
 - **Pick & reorder columns.** Drag a column header (or a row in the **▦ Columns** menu) to reorder — a bold blue insertion line marks the drop target and a drag-preview chip follows the cursor. Right-click a header or use the menu to show/hide. Order and visibility persist per workspace. Hidden columns are **not** read from GDB at all; enabling one fetches its data on the spot.
-- **Master–detail.** A section whose `root`/`head`/`count` contains `${selected}` becomes a detail table; click a row in a master section (e.g. a process) to populate it with that element's lists. The first master row is auto-selected.
-- **Grouping (tree).** Or keep a section in its own tab and render it as a collapsible tree grouped under a master (`groupBy` + `${master}`), with a flat-view toggle.
+- **Grouping (tree).** Relate sections: render one section, in its own tab, as a
+  collapsible tree grouped under a master section (`groupBy` + `${master}`) — e.g.
+  every process's semaphores under its process node — all at once, with a
+  flat-view toggle.
+- **Hide columns by default.** Mark a field `"hidden": true` to start it collapsed
+  (and unfetched) until you enable it from the ▦ Columns menu.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0` is flagged red, `Waiting > 0` amber, plus a summary line per tab.
 - **Read-only & safe.** Debug Inspector only *reads* your data — it never calls functions or writes your program's memory, so program state is never disturbed.
 - **Leveled, color-coded logging.** A *Debug Inspector* Output channel (rendered with the `log` syntax so timestamps/severities/values are colorized); pick `off` / `info` / `debug`.
@@ -48,18 +52,18 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 | Field     | Modes                       | Meaning |
 |-----------|-----------------------------|---------|
 | `mode`    | all *(required)*            | `"linked_list"`, `"array"`, or `"index_list"`. |
-| `root`    | all *(required)*            | Starting expression in your program's own syntax (head pointer or array). May contain `${selected}` / `${master}`. |
+| `root`    | all *(required)*            | Starting expression in your program's own syntax (head pointer or array). May contain `${master}` (grouping). |
 | `next`    | linked_list, index_list     | Field giving the next element — a **pointer** (`cursor->next`) for linked_list, an **index** for index_list. For index_list it may instead be a `${expr}` **template** (like `wrap`) that computes the next index, e.g. `"${expr}.link.idx"`. Used verbatim, so set it (it only falls back to `next` when building a master's clickable/grouped selector). |
-| `head`    | index_list                  | Starting **index** expression. May contain `${selected}` / `${master}`. |
-| `nil`     | index_list                  | Sentinel index that ends the walk (default `-1`). May contain `${selected}` / `${master}`. |
-| `count`   | array                       | Expression yielding the element count (parsed as an integer). May contain `${selected}` / `${master}`. |
+| `head`    | index_list                  | Starting **index** expression. May contain `${master}` (grouping). |
+| `nil`     | index_list                  | Sentinel index that ends the walk (default `-1`). May contain `${master}` (grouping). |
+| `count`   | array                       | Expression yielding the element count (parsed as an integer). May contain `${master}` (grouping). |
 | `access`  | array, index_list           | Element-to-field accessor: `"."` (default) or `"->"` for a pointer element. (linked_list is always `->`.) |
 | `cast`    | array, index_list           | Cast applied to `root` to reinterpret a generic/`void*` buffer — **written in full** (e.g. `widget_t *`); no `*` is auto-added. |
 | `wrap`    | all                         | Template that transforms the **element** before field access; `${expr}` is the element. |
 | `label`   | master sections             | Expression evaluated on the master element to title each tree node when another section groups by this one. |
 | `groupBy` | grouping sections           | Names a master section; renders this section as a collapsible tree, one group per master element (use `${master}` in `root`/`head`/`count`/`nil`). |
 | `max`     | all                         | Traversal upper bound / safety guard (default `1024`). |
-| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns. The first column is the row's identity/key. |
+| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). A field may add `"hidden": true` to start collapsed/unfetched. |
 
 #### Notes on the subtle fields
 
@@ -67,7 +71,11 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 
 **`wrap` parenthesizes twice and supports a field hop.** The element is parenthesized into the wrap, and then the **wrap output is itself parenthesized** before the field access is appended. So `wrap: "((widget_t *)${expr})"` with element `g_slots[i]` and `access: "->"` yields `(((widget_t *)(g_slots[i])))->field`. The extra outer parens fix precedence, so a deref wrap `"*(${expr})"` correctly becomes `(*(elem)).field` rather than the mis-parsed `*(elem).field`. `wrap` composes **with** `cast`: `cast` is applied to `root` to form the element, then `wrap` wraps that element. You can also **hop through a field before casting** by reaching it inside the wrap — e.g. `wrap: "((widget_t *)(${expr}.data))"` reaches `.data` first, giving `((widget_t *)(g_boxes[i].data))->field`.
 
-**`${selected}` / `${master}` substitute the *processed* element.** Both placeholders resolve to a type-safe re-selection of the master row — with the master's own `cast` **and** `wrap` already applied — substituted (in parentheses) into the target section's `root`, `count`, `head`, and `nil`. No address-taking and no extra cast is required. `${selected}` drives master–detail (the row you click); `${master}` drives grouping (every master element at once).
+**`${master}` substitutes the *processed* element.** In a section that sets
+`groupBy`, `${master}` resolves — for each master element — to a type-safe
+re-selection of that master row, with the master's own `cast` **and** `wrap`
+already applied, substituted (in parentheses) into this section's `root`, `count`,
+`head`, and `nil`. No address-taking and no extra cast is required.
 
 **`label` runs on the processed master element.** It titles each tree node in a grouped child. A `char*` rendered as `0x.. "init"` is reduced to just `init`; otherwise the value is used as-is. If the master has no `label`, the group falls back to the master row's first-column key.
 
@@ -141,33 +149,6 @@ one `wrap` receives, so it means the same thing in both. To reuse a `cast`/`wrap
 instead of rewriting it, use **`${wrapped_expr}`** (the post-`cast`/`wrap`
 element): with `wrap: "((node_t *)${expr})"`, write `"next": "${wrapped_expr}->nxt"`.
 (The demo's `procSlots` uses `"next": "${expr}.next"`.)
-
-### Master–detail (`${selected}`)
-
-Put `${selected}` in a section's `root` (or `head` / `count`) to make it a *detail* table that follows the row you click in a master section. The first master row is auto-selected; the selected row is highlighted. Detail sections are separate tabs that repopulate on each click.
-
-```json
-{
-  "processes": {
-    "mode": "linked_list", "root": "g_process_list", "next": "next",
-    "fields": [
-      { "label": "PID",  "expr": "pid" },
-      { "label": "Name", "expr": "name" }
-    ]
-  },
-  "threads": {
-    "mode": "linked_list", "root": "${selected}->thread_list", "next": "next",
-    "fields": [
-      { "label": "ID",       "expr": "id" },
-      { "label": "Name",     "expr": "name" },
-      { "label": "State",    "expr": "state" },
-      { "label": "Priority", "expr": "prio" }
-    ]
-  }
-}
-```
-
-Clicking a `processes` row fills `threads` with that process's thread list. A `mutexes` detail is the same shape with `root: "${selected}->mutex_list"`.
 
 ### Grouping / tree (`groupBy` + `${master}`)
 

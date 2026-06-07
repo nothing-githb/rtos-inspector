@@ -31,12 +31,12 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 - **Three traversal modes.** `linked_list` (head pointer + `next` field),
   `array` (`count` elements with `.`/`->` access), and `index_list` (a list
   living inside an array, linked by a *next-index* field — empty slots skipped).
-- **Master-detail.** A `${selected}` placeholder turns a section into a detail
-  table; click a row in a master section to populate it with *that* element's
-  lists. First master row is auto-selected.
-- **Grouping (tree).** Or keep a section in its own tab as a collapsible tree
-  grouped under a master (`groupBy` + `${master}`) — all parents shown at once,
-  with a Flat-view toggle.
+- **Grouping (tree).** Relate sections: a section can show, in its own tab, as a
+  collapsible tree grouped under a master section (`groupBy` + `${master}`) — e.g.
+  every process's semaphores under its process node — all at once, with a
+  Flat-view toggle.
+- **Hide columns by default.** Mark a field `"hidden": true` to start it
+  collapsed (and unfetched) until you enable it from the ▦ Columns menu.
 - **Arbitrary root expressions** — anything valid in GDB, e.g.
   `g_kernel.pools[0]->thread_list`.
 - **Generic `void*` buffers.** Reinterpret an untyped buffer as a typed array
@@ -131,12 +131,12 @@ Every field, across all modes:
 | Field     | Modes | Default | Meaning |
 |-----------|-------|---------|---------|
 | `mode`    | all | — (required) | `"linked_list"`, `"array"`, or `"index_list"`. Selects the traversal. |
-| `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, or buffer). May contain `${selected}` / `${master}`. |
-| `fields`  | all | — (required) | Ordered list of `{ "label", "expr" }` columns. `label` is the header (and first column = row identity); `expr` is the accessor appended after the element. |
-| `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index**, OR a `${expr}` template that computes it (like `wrap` — `${expr}` is the element; e.g. `"${expr}.link.idx"` or `"g_succ[${expr}.id]"`). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a clickable/grouped master's selector expression. |
-| `head`    | index_list | — | Starting **index** expression, read once. May contain `${selected}` / `${master}`. |
-| `nil`     | index_list | `-1` | Sentinel index that ends the walk. May contain `${selected}` / `${master}`. |
-| `count`   | array | — (required for array) | Expression giving the element count; read once per refresh. If it can't be read it's treated as `0` (empty table). May contain `${selected}` / `${master}`. |
+| `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, or buffer). May contain `${master}` (grouping). |
+| `fields`  | all | — (required) | Ordered list of `{ "label", "expr" }` columns. `label` is the header (and first column = row identity); `expr` is the accessor appended after the element. A field may add `"hidden": true` to start collapsed. |
+| `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index**, OR a `${expr}` template that computes it (like `wrap` — `${expr}` is the element; e.g. `"${expr}.link.idx"` or `"g_succ[${expr}.id]"`). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a grouped master's selector expression. |
+| `head`    | index_list | — | Starting **index** expression, read once. May contain `${master}` (grouping). |
+| `nil`     | index_list | `-1` | Sentinel index that ends the walk. May contain `${master}` (grouping). |
+| `count`   | array | — (required for array) | Expression giving the element count; read once per refresh. If it can't be read it's treated as `0` (empty table). May contain `${master}` (grouping). |
 | `access`  | array, index_list | `.` | Accessor between element and field — `"."` for a value element, `"->"` for a pointer. (linked_list always uses `->`.) |
 | `cast`    | array, index_list | — | Cast applied to `root` to reinterpret an untyped buffer. **Write it in full** — no `*` is appended for you. |
 | `wrap`    | all | — | Template that transforms the **element** before field access; `${expr}` = the element. |
@@ -175,18 +175,13 @@ before the cast:
 wrap: "((widget_t *)(${expr}.data))",  access: "->"   →   ((widget_t *)(g_boxes[i].data))->field
 ```
 
-#### Placeholders — `${selected}` and `${master}`
+#### Placeholder — `${master}`
 
-Both resolve to the master row's **fully processed element** (its own `cast` and
-`wrap` re-applied — no address-taking, no extra cast needed):
-
-- **`${selected}`** (master-detail) — a section is a *detail* section when
-  `${selected}` appears in its `root`, `head`, or `count`. It is substituted (in
-  parentheses) into `root`, `count`, `head`, and `nil` with the **currently
-  selected** master row's element.
-- **`${master}`** (grouping) — used in a section that sets `groupBy`. For **each**
-  master element, `${master}` is substituted into `root`, `count`, `head`, and
-  `nil`, producing one group per parent.
+Used in a section that sets `groupBy`. For **each** element of the master section,
+`${master}` is substituted (in parentheses) into this section's `root`, `count`,
+`head`, and `nil`, producing one group per parent. It resolves to the master
+row's **fully processed element** — its own `cast` and `wrap` re-applied — so no
+address-taking or extra cast is needed.
 
 #### `label`
 
@@ -273,43 +268,12 @@ the wrapped element).
 
 ---
 
-### Master-detail (`${selected}`)
-
-Drill from a parent into its children. Put `${selected}` in a section's `root`
-(or `head`/`count`) to make it a *detail* table. When any detail section exists,
-every master section's rows become **clickable**; clicking one resolves
-`${selected}` to that element and re-fetches the detail tabs. The first master
-row is auto-selected.
-
-```json
-{
-  "processes": {
-    "mode": "linked_list", "root": "g_process_list", "next": "next",
-    "fields": [ { "label": "PID", "expr": "pid" }, { "label": "Name", "expr": "name" } ]
-  },
-  "threads": {
-    "mode": "linked_list", "root": "${selected}->thread_list", "next": "next",
-    "fields": [
-      { "label": "ID", "expr": "id" }, { "label": "Name", "expr": "name" },
-      { "label": "State", "expr": "state" }, { "label": "Priority", "expr": "prio" }
-    ]
-  },
-  "mutexes": {
-    "mode": "linked_list", "root": "${selected}->mutex_list", "next": "next",
-    "fields": [ { "label": "ID", "expr": "id" }, { "label": "Owner", "expr": "owner" } ]
-  }
-}
-```
-
-Click a `processes` row and the `threads` / `mutexes` tabs show *that* process's
-lists. An `index_list` detail can start at a per-parent head, e.g.
-`"head": "${selected}->free_head"`.
-
 ### Grouping / tree (`groupBy` + `${master}`)
 
-Keep a section in its **own tab** but show it as a collapsible tree of **all**
-parents at once (not click-driven). Set `groupBy` to the master section's name
-and use `${master}` in `root`; the master's `label` titles each node.
+Relate one section to another: set `groupBy` to a master section's name and use
+`${master}` in `root`, and this section renders in its **own tab** as a
+collapsible tree of **all** master elements at once. The master's `label` titles
+each node.
 
 ```json
 {
@@ -348,8 +312,8 @@ toggle switches to a single ungrouped table of all rows. Grouping also works wit
 }
 ```
 
-> Master-detail shows **one** selected parent's children across separate tabs;
-> grouping shows **all** parents at once in one tab. Use whichever fits.
+> Every grouped section populates on each stop with no clicking — all parents and
+> their children are shown at once.
 
 ### Generic `void*` arrays (`cast`)
 
@@ -446,7 +410,7 @@ id so the theme color-codes timestamps, severities, and values; each line is
   warnings/errors, including GDB access **failures**. Use this when a column comes
   up empty or a `root` / `cast` / `next` doesn't resolve.
 - **`debug`** — everything: per-section resolved traversal and row counts, the
-  resolved `${selected}` / `${master}`, **every prepared GDB access string**
+  resolved `${master}`, **every prepared GDB access string**
   (`gdb ▸`) and **its result** (`gdb ◂`), and a line per traversal **step**. For
   an `index_list` each hop is shown as
   `step N: idx X → next [ root[idx].next ] = "v" → idx N`; for a `linked_list`,
@@ -481,14 +445,13 @@ Extension Development Host.
 ## Try the example
 
 Open `test-workspace/` as a folder. It contains `threads_demo.c` — a tiny demo
-with **two processes** (`init`, `worker`), each owning its own thread / semaphore
-/ mutex lists, plus an independent timer array and several `void*`/index examples.
-The matching `rtos-inspector.json` wires it up as **master-detail** (a `processes`
-tab plus `threads` / `mutexes` detail tabs via `${selected}`), **grouping**
-(`semaphores` and `procSlots` grouped under `processes` via `${master}`), an
-`array` timer tab, and `cast` / `wrap` / `index_list` examples (`widgets`,
-`slots`, `boxes`, `pool`). Click a process row to drill into its lists, or open
-the Semaphores tab to see every process's semaphores as a tree. The
+with **two processes** (`init`, `worker`), each owning its own semaphore list,
+plus an independent timer array and several `void*`/index examples. The matching
+`rtos-inspector.json` shows a `processes` list and **grouping** (`semaphores` and
+`procSlots` grouped under `processes` via `${master}`), an `array` timer tab, and
+`cast` / `wrap` / `index_list` examples (`widgets`, `slots`, `boxes`, `pool` — the
+latter with a default-hidden `Next` column). Everything fills in on each stop;
+open the Semaphores tab to see every process's semaphores as a tree. The
 `.vscode/{launch,tasks}.example.json` templates (copy to `launch.json` /
 `tasks.json` and set your toolchain path) include Cygwin GDB tips in comments.
 
