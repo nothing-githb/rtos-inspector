@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.23.2] - 2026-06-06
+
+### Fixed
+- In a grouped (tree) section, **collapsing a group made the whole group —
+  including its header — disappear** and it couldn't be re-expanded. `applyFilter`
+  was hiding any group header with no visible rows beneath it, which also caught
+  collapsed groups (whose rows aren't rendered). It now keeps a collapsed group's
+  header visible and only hides a group when an active filter / changed-only
+  removes all of its rows.
+
 ## [0.23.1] - 2026-06-06
 
 ### Fixed

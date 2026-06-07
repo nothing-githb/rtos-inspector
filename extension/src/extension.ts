@@ -1022,10 +1022,16 @@ function getHtml(): string {
     const f = (st.filter || '').trim().toLowerCase();
     const tb = body.querySelector('tbody'); if (!tb) return;
     const chgOnly = st.changedOnly && !st.sec.grouped && st.changeCount > 0;
-    let grp = null, grpVisible = false;
-    const finalize = () => { if (grp) grp.style.display = grpVisible ? '' : 'none'; };
+    const active = !!f || chgOnly;                       // herhangi bir gizleme kriteri var mı
+    const collapsed = st.collapsed || [];
+    let grp = null, grpVisible = false, grpKey = null;
+    // grup başlığını yalnız FİLTRE/changed-only ile (tüm satırları elenince) gizle;
+    // collapse ile satırları gizlenen grubun başlığı her zaman görünür kalmalı (tekrar açılabilsin)
+    const finalize = () => {
+      if (grp) grp.style.display = (!active || grpVisible || collapsed.indexOf(grpKey) !== -1) ? '' : 'none';
+    };
     for (const tr of tb.children) {
-      if (tr.classList.contains('grphdr')) { finalize(); grp = tr; grpVisible = false; continue; }
+      if (tr.classList.contains('grphdr')) { finalize(); grp = tr; grpKey = tr.dataset.grp; grpVisible = false; continue; }
       let show = true;
       if (f && tr.textContent.toLowerCase().indexOf(f) === -1) show = false;
       if (show && chgOnly && !tr.querySelector('td.changed')) show = false;
