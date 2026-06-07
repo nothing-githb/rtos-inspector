@@ -413,11 +413,19 @@ function isDetail(cfg: SectionCfg): boolean {
 }
 // Master satırın elemanını yeniden seçen ifade (tip-güvenli, adres/cast gerektirmez)
 function selectorExpr(cfg: SectionCfg, index: number): string {
-  if (cfg.mode === 'array') return '(' + cfg.root + ')[' + index + ']';
-  let e = cfg.root;
-  const nx = cfg.next ?? 'next';
-  for (let k = 0; k < index; k++) e = e + '->' + nx;   // root(->next)^index
-  return e;
+  // collectSection'daki eleman üretimiyle birebir: cast + wrap DAHİL işlenmiş eleman
+  let elem: string;
+  if (cfg.mode === 'array') {
+    const base = cfg.cast ? `((${cfg.cast})(${cfg.root}))` : `(${cfg.root})`;
+    elem = `${base}[${index}]`;
+  } else {
+    let e = cfg.root;
+    const nx = cfg.next ?? 'next';
+    for (let k = 0; k < index; k++) e = e + '->' + nx;   // root(->next)^index
+    elem = e;
+  }
+  if (cfg.wrap) elem = cfg.wrap.split('${expr}').join('(' + elem + ')');
+  return elem;
 }
 function substituteSel(expr: string, sel: string): string {
   return expr.split('${selected}').join('(' + sel + ')');

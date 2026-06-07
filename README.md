@@ -218,7 +218,8 @@ selected parent's children across separate tabs — use whichever fits.)
 `${master}` may appear in `root`, `count`, **`head`**, or `nil` — so an
 `index_list` can start its walk at a per-parent head, e.g.
 `"head": "${master}->slot_head"`. (`${selected}` works in the same fields for
-master–detail.)
+master–detail.) The substituted value is the master's **processed element** (its
+own `cast`/`wrap` applied), so masters stored behind a `void*` work too.
 
 ### Generic `void*` arrays
 

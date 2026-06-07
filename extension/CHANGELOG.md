@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.18.1] - 2026-06-06
+
+### Fixed
+- When substituting `${master}` / `${selected}`, the value is now the master's
+  **fully-processed element** — its `cast` and `wrap` applied — matching how the
+  master reads its own fields. Previously the raw `(root)[i]` / `root->next` was
+  used, so a master stored behind a `void*` (needing a `cast`/`wrap`) produced
+  invalid child expressions.
+
 ## [0.18.0] - 2026-06-06
 
 ### Added
