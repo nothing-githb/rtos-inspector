@@ -50,12 +50,11 @@ by hand in the debugger.
   flat-view toggle.
 - **Read-only & safe.** Debug Inspector only *reads* globals — it never calls
   functions, so your program state is never disturbed.
-- **Leveled logging.** An *Debug Inspector* Output channel logs at
-  off/error/warn/info/debug/trace — pick the level with the
-  **`rtosInspector.logLevel`** setting. At `debug` each section logs its resolved
-  traversal (element + **next-access** expression); at `trace` every GDB access
-  string, result, and traversal step is logged (e.g. how `next` is resolved at
-  each hop). Run "Debug Inspector: Show Log" to open it.
+- **Leveled logging.** An *Debug Inspector* Output channel — pick the level with
+  the **`rtosInspector.logLevel`** setting: `off` / `info` / `debug`. `info` shows
+  milestones plus warnings/errors; `debug` logs every GDB access string + result
+  and each traversal step (e.g. how `next` is resolved at each hop). Run
+  "Debug Inspector: Show Log" to open it.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column
   becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0`
   is flagged red and `Waiting > 0` amber, with a summary line per tab.
@@ -237,7 +236,7 @@ A value GDB cannot read (an inaccessible address, an error) or a NULL pointer
 | Setting                | Default            | Description |
 |------------------------|--------------------|-------------|
 | `rtosInspector.configPath` | `rtos-inspector.json`   | Config file path: absolute, or relative to the workspace root. |
-| `rtosInspector.logLevel`   | `info`             | Output channel verbosity: `off`/`error`/`warn`/`info`/`debug`/`trace`. |
+| `rtosInspector.logLevel`   | `info`             | Output channel verbosity: `off` / `info` / `debug`. |
 | `rtosInspector.debugTypes` | `["cppdbg"]`       | Debug adapter types the tracker attaches to. |
 
 ## How it works

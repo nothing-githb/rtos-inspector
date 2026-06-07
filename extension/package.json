@@ -2,7 +2,7 @@
   "name": "rtos-inspector",
   "displayName": "Debug Inspector",
   "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "publisher": "halistahasahin",
   "license": "MIT",
   "icon": "icon.png",
@@ -72,20 +72,14 @@
           "type": "string",
           "enum": [
             "off",
-            "error",
-            "warn",
             "info",
-            "debug",
-            "trace"
+            "debug"
           ],
           "default": "info",
           "enumDescriptions": [
             "No logging.",
-            "Only errors.",
-            "Errors and warnings (incl. GDB access failures).",
-            "General milestones: activate, refresh, selection (default).",
-            "Adds every prepared GDB access string and per-section/traversal detail.",
-            "Adds each GDB result and step-by-step traversal (e.g. how 'next' is resolved at each hop)."
+            "General milestones plus warnings/errors: activate, refresh, selection, GDB access failures (default).",
+            "Everything: every prepared GDB access string + result, and step-by-step traversal (e.g. how 'next' is resolved at each hop)."
           ],
           "description": "Verbosity of the Debug Inspector Output channel (\"Debug Inspector: Show Log\")."
         },

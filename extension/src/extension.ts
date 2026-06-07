@@ -41,7 +41,8 @@ interface ColPref { order: string[]; hidden: string[]; }
 let panel: vscode.WebviewPanel | undefined;
 let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
 // Output: config-driven seviyeli logger (rtosInspector.logLevel)
-const LOG_LEVELS: Record<string, number> = { trace: 10, debug: 20, info: 30, warn: 40, error: 50, off: 100 };
+// Seçilebilir seviyeler: off / info / debug. trace -> debug tier, warn/error -> info tier.
+const LOG_LEVELS: Record<string, number> = { debug: 20, trace: 20, info: 30, warn: 30, error: 30, off: 100 };
 let logChannel: vscode.OutputChannel | undefined;
 let logThreshold = LOG_LEVELS.info;
 function readLogLevel(): number {

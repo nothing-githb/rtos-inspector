@@ -60,8 +60,9 @@ by hand in the debugger.
 - **Tidy empties** — an unreadable/inaccessible value or a NULL pointer (`0x0`)
   shows as a muted `-` (a plain integer `0` stays `0`).
 - **Leveled logs** — an *Debug Inspector* Output channel; pick the level with the
-  `rtosInspector.logLevel` setting. At `trace` every GDB query/result and each
-  traversal step (e.g. how `next` is resolved at each hop) is shown.
+  `rtosInspector.logLevel` setting (`off` / `info` / `debug`). At `debug` every
+  GDB query/result and each traversal step (e.g. how `next` is resolved at each
+  hop) is shown.
 
 ## Requirements
 
@@ -264,7 +265,7 @@ against cycles. Write `nil` as GDB prints the index (usually decimal).
 | Setting                | Default          | Description |
 |------------------------|------------------|-------------|
 | `rtosInspector.configPath` | `rtos-inspector.json` | Config file path: **absolute**, or relative to the workspace root. |
-| `rtosInspector.logLevel`   | `info`           | Output channel verbosity: `off`/`error`/`warn`/`info`/`debug`/`trace`. |
+| `rtosInspector.logLevel`   | `info`           | Output channel verbosity: `off` / `info` / `debug`. |
 | `rtosInspector.debugTypes` | `["cppdbg"]`     | Debug adapter types the tracker attaches to. |
 
 ## How it works
@@ -312,15 +313,15 @@ GDB tips in comments.
 
 Open **View → Output → "Debug Inspector"** (or run **"Debug Inspector: Show Log"**)
 to see what the extension is doing. Set the level with the **`rtosInspector.logLevel`**
-setting (`off`/`error`/`warn`/`info`/`debug`/`trace`):
+setting (`off` / `info` / `debug`):
 
-- `debug` — per-section row counts/columns, the resolved `${selected}`/`${master}`,
-  **every prepared GDB access string**, and each section's resolved traversal
-  (element + the **next-access** expression, e.g. `root[idx].next`).
-- `trace` — adds each command's result and a line per traversal **step** (for
-  `index_list`, each hop: `idx → next [ root[idx].next ] = "v" → idx N`).
-- Access failures are logged as warnings (visible at `info`) — handy when a
-  column is empty or a `root`/`cast`/`next` doesn't resolve.
+- `info` — milestones (refresh, master/selection) plus GDB access **failures**
+  (warnings) — handy when a column is empty or a `root`/`cast`/`next` doesn't
+  resolve.
+- `debug` — everything: per-section row counts/columns, the resolved
+  `${selected}`/`${master}`, **every prepared GDB access string + result**, and a
+  line per traversal **step** (for `index_list`, each hop:
+  `idx → next [ root[idx].next ] = "v" → idx N`).
 
 ## License
 

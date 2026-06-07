@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.17.1] - 2026-06-06
+
+### Changed
+- Selectable log levels reduced to **off / info / debug**. `info` shows
+  milestones plus warnings/errors; `debug` folds in the former trace-level
+  per-step traversal detail.
+
 ## [0.17.0] - 2026-06-06
 
 ### Added
