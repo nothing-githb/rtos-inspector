@@ -2,6 +2,18 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.24.0] - 2026-06-06
+
+### Added
+- **Show / hide / reorder sections (tabs).** A new **▤ Sections** button in the
+  top bar lists every section with a checkbox to hide or show it, and you can
+  **drag a tab** to reorder. Both are remembered per workspace (hidden sections
+  aren't fetched until shown again).
+
+### Changed
+- The **▦ Columns** button moved out of its own strip into each table's toolbar,
+  next to **⧉ MD** (the columns menu opens beneath it).
+
 ## [0.23.2] - 2026-06-06
 
 ### Fixed

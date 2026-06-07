@@ -39,6 +39,9 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Hide columns by default.** Mark a field `"hidden": true` to start it
   collapsed (and unfetched) until you enable it from the ▦ Columns menu.
+- **Manage sections (tabs).** Hide/show whole sections from the **▤ Sections**
+  menu and **drag tabs** to reorder — remembered per workspace (hidden sections
+  aren't fetched).
 - **Arbitrary root expressions** — anything valid in GDB, e.g.
   `g_kernel.pools[0]->thread_list`.
 - **Generic `void*` buffers.** Reinterpret an untyped buffer as a typed array

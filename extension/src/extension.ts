@@ -73,6 +73,8 @@ let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: Record<string, ColPref> = {};
 const COLPREF_KEY = 'rtosInspector.columnPrefs';
+let sectionPrefs: { order: string[]; hidden: string[] } = { order: [], hidden: [] };  // sekme sırası + gizli sekmeler
+const SECPREF_KEY = 'rtosInspector.sectionPrefs';
 let paused = false;                         // duraklatılınca durakta otomatik yenileme yapılmaz
 const PAUSED_KEY = 'rtosInspector.paused';
 
@@ -82,6 +84,7 @@ const PAUSED_KEY = 'rtosInspector.paused';
 export function activate(context: vscode.ExtensionContext) {
   extContext = context;
   columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
+  sectionPrefs = context.workspaceState.get<{ order: string[]; hidden: string[] }>(SECPREF_KEY) ?? { order: [], hidden: [] };
   paused = context.workspaceState.get<boolean>(PAUSED_KEY) ?? false;
 
   logChannel = vscode.window.createOutputChannel('Debug Inspector', 'log'); // 'log' dili = renkli
@@ -551,28 +554,38 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   } catch { /* ignore */ }
 
   const secs = extractSections(cfg);
-  log?.info(`refresh: ${secs.length} section(s) [${secs.map(s => s.name).join(', ')}]`);
+  const allNames = secs.map(s => s.name);
+  // sekme sırası (sectionPrefs.order) + yeni eklenenler sona; gizli sekmeler
+  const order = (sectionPrefs.order || []).filter(n => allNames.includes(n));
+  for (const n of allNames) if (!order.includes(n)) order.push(n);
+  const hiddenSet = new Set((sectionPrefs.hidden || []).filter(n => allNames.includes(n)));
+  // gruplama hedefi olan master'lar gizli olsa bile toplanmalı
+  const masterTargets = new Set(secs.filter(s => isGrouped(s.cfg)).map(s => s.cfg.groupBy));
+  log?.info(`refresh: ${secs.length} section(s); visible=[${order.filter(n => !hiddenSet.has(n)).join(', ')}] hidden=[${[...hiddenSet].join(', ')}]`);
 
-  // 1. geçiş: gruplanmayan (bağımsız/master) bölümleri topla; gruplama için satır seçim ifadeleri sakla
+  // 1. geçiş: gruplanmayan (bağımsız/master) bölümleri topla (gizli + master-hedefi olmayanları atla)
   const masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
   for (let i = 0; i < secs.length; i++) {
     const { name, cfg: scfg } = secs[i];
     if (isGrouped(scfg)) continue;
+    if (hiddenSet.has(name) && !masterTargets.has(name)) continue;   // gizli & gruplama hedefi değil -> çekme
     const sec = await buildSection(session, scfg, frameId, '$ri_' + i, name);
     masters[name] = { sec, selExprs: sec.rows.map((_, idx) => selectorExpr(scfg, idx)), cfg: scfg };
   }
 
-  // 2. geçiş: config sırasıyla birleştir; gruplu bölümler ${master} ile her master elemanına genişler
-  const sections: Section[] = [];
+  // 2. geçiş: görünür bölümleri kur (gizli olanları atla)
+  const built: Record<string, Section> = {};
   for (let i = 0; i < secs.length; i++) {
     const { name, cfg: scfg } = secs[i];
-    if (isGrouped(scfg)) { sections.push(await buildGrouped(session, frameId, i, name, scfg, masters)); continue; }
-    sections.push(masters[name].sec);
+    if (hiddenSet.has(name)) continue;
+    built[name] = isGrouped(scfg) ? await buildGrouped(session, frameId, i, name, scfg, masters) : masters[name].sec;
   }
+  const sections = order.filter(n => !hiddenSet.has(n)).map(n => built[n]).filter(Boolean);
 
   panel.webview.postMessage({
     type: 'update',
     sections,
+    hiddenSections: order.filter(n => hiddenSet.has(n)),
     ts: new Date().toLocaleTimeString()
   });
 }
@@ -607,6 +620,14 @@ function openPanel(context: vscode.ExtensionContext) {
       } else if (msg?.type === 'copy' && typeof msg.text === 'string') {
         vscode.env.clipboard.writeText(msg.text);
         log?.debug(`webview: copied ${msg.text.length} chars to clipboard`);
+      } else if (msg?.type === 'setSections') {
+        sectionPrefs = {
+          order: Array.isArray(msg.order) ? msg.order : [],
+          hidden: Array.isArray(msg.hidden) ? msg.hidden : []
+        };
+        log?.debug(`webview: setSections order=[${sectionPrefs.order.join(', ')}] hidden=[${sectionPrefs.hidden.join(', ')}]`);
+        extContext?.workspaceState.update(SECPREF_KEY, sectionPrefs);
+        doRefresh();
       }
     },
     null,
@@ -654,9 +675,8 @@ function getHtml(): string {
   }
   .btn:hover { background: var(--vscode-list-hoverBackground); }
 
-  .cols-bar { position: relative; margin: 12px 2px 0; }
   .cols-menu {
-    position: absolute; z-index: 5; margin-top: 4px; min-width: 210px;
+    position: fixed; z-index: 50; min-width: 210px;
     background: var(--vscode-menu-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,0.3)));
     border-radius: 8px; padding: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
@@ -702,6 +722,7 @@ function getHtml(): string {
     border-bottom: 2px solid var(--vscode-focusBorder, #3498db);
   }
   .tab.hidden { display: none; }
+  .tab.drop-target { box-shadow: inset 0 -3px 0 #3b9eff; background: rgba(59,158,255,0.18); }
 
   .pane { padding: 0 16px 20px; }
   .pane.hidden { display: none; }
@@ -815,9 +836,11 @@ function getHtml(): string {
     <span id="changes" class="pill chg hidden"></span>
     <span class="grow"></span>
     <span id="ts" class="ts"></span>
+    <button id="sections-btn" class="btn" title="Show / hide sections (tabs)">▤ Sections</button>
     <button id="pause" class="btn" title="Pause/resume auto-refresh on each stop">⏸ Pause</button>
     <button id="refresh" class="btn" title="Re-read config and refresh now">⟳ Refresh</button>
   </div>
+  <div class="cols-menu hidden" id="sections-menu"></div>
 
   <div class="tabs" id="tabs"></div>
   <div id="panes">
@@ -833,6 +856,7 @@ function getHtml(): string {
 
   const secState = {};       // name -> {sec, sortCol, sortDir, changed, changeCount, order, hidden}
   let currentNames = [];     // ordered section names matching DOM indices
+  let hiddenSections = [];   // gizli sekme adları (Sections menüsünden açılabilir)
   let activeName = null;
 
   document.getElementById('refresh').addEventListener('click', () => {
@@ -871,14 +895,11 @@ function getHtml(): string {
       return;
     }
     tabsEl.innerHTML = names.map((n, i) =>
-      '<button class="tab" data-idx="' + i + '" id="tab-' + i + '">' + esc(cap(n)) +
+      '<button class="tab" data-idx="' + i + '" id="tab-' + i + '" draggable="true" title="Click: switch  ·  Drag: reorder">' + esc(cap(n)) +
       '<span class="badge-count" id="cnt-' + i + '">0</span></button>').join('');
     panesEl.innerHTML = names.map((n, i) =>
       '<div class="pane' + (i === 0 ? '' : ' hidden') + '" data-idx="' + i + '" id="pane-' + i + '">' +
-        '<div class="cols-bar">' +
-          '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>' +
-          '<div class="cols-menu hidden" id="cols-' + i + '"></div>' +
-        '</div>' +
+        '<div class="cols-menu hidden" id="cols-' + i + '"></div>' +
         '<div class="pane-body" id="body-' + i + '"></div>' +
       '</div>').join('');
     if (idxOf(activeName) === -1) activeName = names[0];
@@ -1012,6 +1033,7 @@ function getHtml(): string {
     h += '<span class="grow"></span>';
     h += '<button class="btn copy-csv" title="Copy table as CSV">⧉ CSV</button>';
     h += '<button class="btn copy-md" title="Copy table as Markdown">⧉ MD</button>';
+    h += '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>';
     h += '</div>';
     return h;
   }
@@ -1289,10 +1311,13 @@ function getHtml(): string {
       const name = paneName(e);
       const menu = colsMenuEl(name);
       const willOpen = menu.classList.contains('hidden');
-      for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+      for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
       if (willOpen) {
-        menu.style.position = ''; menu.style.left = ''; menu.style.top = '';
         buildColsMenu(name);
+        const r = colsBtn.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + 'px';
+        menu.style.top = (r.bottom + 4) + 'px';
         menu.classList.remove('hidden');
       }
       return;
@@ -1472,7 +1497,79 @@ function getHtml(): string {
   });
 
   document.addEventListener('click', () => {
-    for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+    for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+  });
+
+  // --- Sections (tabs): gizle/göster (menü) + sürükle-sırala (sekmeler) ---
+  const secMenu = document.getElementById('sections-menu');
+  const secBtn = document.getElementById('sections-btn');
+  function sendSections(order, hidden) { vscodeApi.postMessage({ type: 'setSections', order: order, hidden: hidden }); }
+  function buildSectionsMenu() {
+    const all = currentNames.concat(hiddenSections);
+    let h = '<div class="cols-title">Sections — show / hide</div>';
+    if (!all.length) h += '<div class="cols-item">—</div>';
+    all.forEach(n => {
+      const checked = hiddenSections.indexOf(n) === -1 ? ' checked' : '';
+      h += '<div class="cols-item" data-sec="' + esc(n) + '">' +
+        '<label><input type="checkbox" data-act="secvis"' + checked + '> ' + esc(cap(n)) + '</label></div>';
+    });
+    secMenu.innerHTML = h;
+  }
+  secBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const willOpen = secMenu.classList.contains('hidden');
+    for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+    if (willOpen) {
+      buildSectionsMenu();
+      const r = secBtn.getBoundingClientRect();
+      secMenu.style.position = 'fixed';
+      secMenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + 'px';
+      secMenu.style.top = (r.bottom + 4) + 'px';
+      secMenu.classList.remove('hidden');
+    }
+  });
+  secMenu.addEventListener('click', e => e.stopPropagation());
+  secMenu.addEventListener('change', e => {
+    const cb = e.target.closest('input[data-act="secvis"]');
+    if (!cb) return;
+    const n = cb.closest('.cols-item').dataset.sec;
+    let hid = hiddenSections.slice();
+    if (cb.checked) { hid = hid.filter(x => x !== n); }
+    else { if (currentNames.length <= 1) { cb.checked = true; return; } if (hid.indexOf(n) === -1) hid.push(n); }
+    sendSections(currentNames.concat(hiddenSections), hid);
+  });
+  // sekme sürükle-sırala
+  let tabDrag = null;
+  tabsEl.addEventListener('dragstart', e => {
+    const t = e.target.closest('.tab[data-idx]'); if (!t) return;
+    tabDrag = currentNames[+t.dataset.idx];
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tabDrag); }
+    setGhost(e, cap(tabDrag));
+  });
+  tabsEl.addEventListener('dragover', e => {
+    if (tabDrag == null) return;
+    const t = e.target.closest('.tab[data-idx]'); if (!t) return;
+    e.preventDefault();
+    for (const x of tabsEl.querySelectorAll('.tab')) x.classList.remove('drop-target');
+    t.classList.add('drop-target');
+  });
+  tabsEl.addEventListener('drop', e => {
+    if (tabDrag == null) return;
+    const t = e.target.closest('.tab[data-idx]'); if (!t) { tabDrag = null; return; }
+    e.preventDefault();
+    const target = currentNames[+t.dataset.idx];
+    if (target !== tabDrag) {
+      const vis = currentNames.slice();
+      vis.splice(vis.indexOf(tabDrag), 1);
+      vis.splice(vis.indexOf(target), 0, tabDrag);
+      sendSections(vis.concat(hiddenSections), hiddenSections.slice());
+    }
+    tabDrag = null;
+    for (const x of tabsEl.querySelectorAll('.tab')) x.classList.remove('drop-target');
+  });
+  tabsEl.addEventListener('dragend', () => {
+    tabDrag = null; clearGhost();
+    for (const x of tabsEl.querySelectorAll('.tab')) x.classList.remove('drop-target');
   });
 
   window.addEventListener('message', e => {
@@ -1481,6 +1578,7 @@ function getHtml(): string {
       if (!paused) { statusEl.textContent = 'stopped'; statusEl.className = 'pill'; }
       tsEl.textContent = m.ts ? ('updated ' + m.ts) : '';
       const list = Array.isArray(m.sections) ? m.sections : [];
+      hiddenSections = Array.isArray(m.hiddenSections) ? m.hiddenSections : [];
       ensureLayout(list.map(s => s.name));
       for (const k of Object.keys(secState))
         if (list.findIndex(s => s.name === k) === -1) delete secState[k];
