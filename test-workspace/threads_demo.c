@@ -62,6 +62,12 @@ typedef struct {
     int          next;   /* sonraki elemanin index'i; -1 = son */
 } slot_t;
 
+/* ---------------- Box: her goz bir sarmalayici; asil veri 'data' field'inda (cast oncesi field hop) ---------------- */
+typedef struct {
+    void *data;   /* asil veri (widget_t*); cast'ten ONCE bu field ile erisilir */
+    int   kind;
+} box_t;
+
 /* ---------------- Process (master: alt listeleri tutar) ---------------- */
 typedef struct process {
     int              pid;
@@ -114,6 +120,7 @@ process_t *g_process_list;   /* master listenin başı */
 widget_t    g_widget_pool[MAX_WIDGETS];   /* arka depo */
 dyn_array_t g_widgets;                    /* data = void*, widget_t[] gösterir */
 void       *g_slots[3];                   /* void* pointer dizisi -> her biri widget_t* (wrap örneği) */
+box_t       g_boxes[3];                    /* her goz {void *data; int kind}; data widget_t* (cast oncesi field hop) */
 #define MAX_SLOTS 6
 slot_t      g_slot_pool[MAX_SLOTS];        /* bazi gozler bos; index ile bagli */
 int         g_slot_head;                   /* zincirin ilk index'i */
@@ -203,6 +210,11 @@ int main(void)
     g_slots[0] = &g_widget_pool[0];
     g_slots[1] = &g_widget_pool[1];
     g_slots[2] = &g_widget_pool[2];
+
+    /* box: asil widget'a 'data' field'i uzerinden erisilir; wrap ile ((widget_t*)(elem.data)) */
+    g_boxes[0].data = &g_widget_pool[0]; g_boxes[0].kind = 1;
+    g_boxes[1].data = &g_widget_pool[1]; g_boxes[1].kind = 1;
+    g_boxes[2].data = &g_widget_pool[2]; g_boxes[2].kind = 2;
 
     /* index-linked havuz; iki ayri zincir (gozler index ile bagli) */
     g_slot_pool[0].id = 101; g_slot_pool[0].name = "alpha"; g_slot_pool[0].next = 2;

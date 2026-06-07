@@ -115,6 +115,11 @@ each element as `((widget_t *)(slots[i]))->field`. The wrap output is
 parenthesized before the field access, so a deref wrap like `*(${expr})` composes
 correctly (`(*(elem)).field`).
 
+If the real data is reached through a **field first** (each slot is a
+`{ void *data; … }` wrapper), put that field inside the wrap so the hop happens
+**before** the cast: `"wrap": "((widget_t *)(${expr}.data))"` with `"access": "->"`
+→ `((widget_t *)(box[i].data))->field`.
+
 ### Example `rtos-inspector.json`
 
 ```json

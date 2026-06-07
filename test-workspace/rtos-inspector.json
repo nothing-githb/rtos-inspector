@@ -92,6 +92,19 @@
     ]
   },
 
+  "//boxes": "cast'ten ÖNCE bir field hop: her g_boxes gözü {void *data}. wrap ile asıl veriye 'data' ile ulaşılıp cast edilir: ((widget_t *)(elem.data))->field.",
+  "boxes": {
+    "mode": "array",
+    "root": "g_boxes",
+    "count": "3",
+    "wrap": "((widget_t *)(${expr}.data))",
+    "access": "->",
+    "fields": [
+      { "label": "X",     "expr": "x" },
+      { "label": "Label", "expr": "label" }
+    ]
+  },
+
   "//pool": "index_list: dizi içinde index ile bağlı liste. head index'inden başla, 'next' alanı sonraki index'i verir, 'nil' (-1) bitirir. Boş gözler (1,3,4) atlanır.",
   "pool": {
     "mode": "index_list",

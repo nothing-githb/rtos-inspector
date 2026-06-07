@@ -231,7 +231,9 @@ A section can set `wrap` to transform each **element** before its fields are rea
 `"wrap": "((widget_t *)${expr})"` with `"access": "->"` → each element is read as
 `((widget_t *)(slots[i]))->field`. The wrap output is parenthesized before the
 field access, so a deref wrap like `*(${expr})` composes correctly
-(`(*(elem)).field`).
+(`(*(elem)).field`). And if the data is reached through a **field first** (each
+slot is a `{ void *data; }` wrapper), put it inside the wrap so the hop happens
+before the cast: `"wrap": "((widget_t *)(${expr}.data))"` → `((widget_t *)(box[i].data))->field`.
 
 A value GDB cannot read (an inaccessible address, an error) or a NULL pointer
 (`0x0`) is shown as a muted `-`. A plain integer `0` is shown as `0`.

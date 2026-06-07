@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.18.3] - 2026-06-06
+
+### Other
+- Documented and demoed a **pre-cast field hop**: when each array slot is a
+  `{ void *data; }` wrapper, reach the data field inside `wrap` before casting —
+  `"wrap": "((widget_t *)(${expr}.data))"` → `((widget_t *)(box[i].data))->field`.
+  The demo gains a `boxes` section. (No engine change — `wrap` already supports
+  this.)
+
 ## [0.18.2] - 2026-06-06
 
 ### Fixed
