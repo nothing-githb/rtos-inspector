@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.17.2] - 2026-06-06
+
+### Changed
+- The Output channel is now rendered with VS Code's built-in **`log`** syntax, so
+  timestamps, severities (`INFO`/`DEBUG`/`WARN`/`ERROR`), and quoted values are
+  **color-coded** by the theme. Lines are formatted as
+  `YYYY-MM-DD HH:MM:SS.mmm [LEVEL] message`.
+
 ## [0.17.1] - 2026-06-06
 
 ### Changed

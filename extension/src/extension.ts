@@ -51,9 +51,12 @@ function readLogLevel(): number {
 }
 function emit(sev: number, tag: string, msg: string) {
   if (!logChannel || sev < logThreshold) return;
+  // 'log' dili gramerinin renklendirebilmesi için: ISO tarih-saat + BÜYÜK seviye
   const d = new Date();
-  const t = d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
-  logChannel.appendLine(`[${t}] [${tag.padEnd(5)}] ${msg}`);
+  const p = (n: number, l = 2) => String(n).padStart(l, '0');
+  const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+  logChannel.appendLine(`${stamp} [${tag.toUpperCase().padEnd(5)}] ${msg}`);
 }
 const log = {
   trace: (m: string) => emit(LOG_LEVELS.trace, 'trace', m),
@@ -80,7 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
   columnPrefs = context.workspaceState.get<Record<string, ColPref>>(COLPREF_KEY) ?? {};
   paused = context.workspaceState.get<boolean>(PAUSED_KEY) ?? false;
 
-  logChannel = vscode.window.createOutputChannel('Debug Inspector');
+  logChannel = vscode.window.createOutputChannel('Debug Inspector', 'log'); // 'log' dili = renkli
   logThreshold = readLogLevel();
   context.subscriptions.push(logChannel);
   log.info(`Debug Inspector activated (log level: ${vscode.workspace.getConfiguration('rtosInspector').get('logLevel') ?? 'info'})`);

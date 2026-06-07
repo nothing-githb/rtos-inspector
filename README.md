@@ -59,10 +59,11 @@ by hand in the debugger.
   state is never disturbed.
 - **Tidy empties** — an unreadable/inaccessible value or a NULL pointer (`0x0`)
   shows as a muted `-` (a plain integer `0` stays `0`).
-- **Leveled logs** — an *Debug Inspector* Output channel; pick the level with the
-  `rtosInspector.logLevel` setting (`off` / `info` / `debug`). At `debug` every
-  GDB query/result and each traversal step (e.g. how `next` is resolved at each
-  hop) is shown.
+- **Leveled, color-coded logs** — an *Debug Inspector* Output channel (rendered
+  with `log` syntax so timestamps/severities/values are colorized); pick the level
+  with the `rtosInspector.logLevel` setting (`off` / `info` / `debug`). At `debug`
+  every GDB query/result and each traversal step (e.g. how `next` is resolved at
+  each hop) is shown.
 
 ## Requirements
 
