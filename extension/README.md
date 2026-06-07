@@ -13,7 +13,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 - **Sortable columns.** Click a header to sort (numeric/hex columns sort numerically, text alphabetically); click again to toggle direction. The choice persists across stops.
 - **Filter & changed-only.** A per-tab filter box narrows rows as you type (focus is preserved); a **Changed** toggle shows only rows that moved since the last stop.
 - **Copy out.** Copy the (filtered) table as **CSV** or **Markdown** in one click — grouped tables add a leading `Group` column.
-- **Per-column number base & alignment.** Show any numeric column as **dec / hex / bin** via a `10 / 16 / 2` selector in the column header's top-right, or set a default in config with a field's `"base"`. Numeric columns right-align with tabular figures, and hovering any cell shows its full value in a tooltip.
+- **Per-column number base & alignment.** Show any numeric column as **dec / hex / bin** via a click-to-cycle base button in the column header's top-right (`#`→`10`→`16`→`2`), or set a default in config with a field's `"base"`. Numeric columns right-align with tabular figures, and hovering any cell shows its full value in a tooltip.
 - **Sticky header.** The header row stays put while you scroll a long table.
 - **Refresh on demand or on change.** A **Refresh** button re-reads the config without restarting the debugger, and the panel also refreshes automatically when the config file changes on disk (while stopped).
 - **Pause / Resume.** Stop auto-refreshing and querying GDB on each stop when you don't need it; Refresh still does a one-shot. Remembered per workspace.

@@ -731,10 +731,10 @@ function getHtml(): string {
 
   /* sayısal kolonlar sağa hizalı + tabular figürler (tam değer her hücrede title'da) */
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  /* başlık sağ üstü: per-kolon sayı tabanı seçici (10 / 16 / 2) */
-  .hbase { float: right; display: inline-flex; gap: 1px; margin-left: 8px; font-size: 9px; font-weight: 700; }
+  /* başlık sağ üstü: per-kolon sayı tabanı düğmesi (tıkla: raw→10→16→2) */
   .hb {
-    cursor: pointer; padding: 0 3px; border-radius: 3px; opacity: 0.45;
+    float: right; margin-left: 8px; cursor: pointer; padding: 0 4px; border-radius: 3px;
+    font-size: 9px; font-weight: 700; opacity: 0.5;
     font-family: var(--vscode-editor-font-family, monospace);
   }
   .hb:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
@@ -950,6 +950,8 @@ function getHtml(): string {
     if (base === 'bin') return (n < 0 ? '-0b' + (-n).toString(2) : '0b' + n.toString(2));
     return String(n); // dec
   }
+  function nextBase(b) { return b === 'raw' ? 'dec' : b === 'dec' ? 'hex' : b === 'hex' ? 'bin' : 'raw'; }
+  function baseLbl(b) { return b === 'dec' ? '10' : b === 'hex' ? '16' : b === 'bin' ? '2' : '#'; }
   function numericCols(columns, rows) {
     const set = {};
     for (const c of columns) {
@@ -1024,11 +1026,9 @@ function getHtml(): string {
       const ind = active ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '';
       const cls = ((active ? 'sorted' : '') + (numCols[c] ? ' num' : '')).trim();
       const b = colBase[c] || 'raw';
-      let ctrl = '';
-      if (numCols[c]) {
-        const opt = (bb, lbl) => '<span class="hb' + (b === bb ? ' on' : '') + '" data-col="' + esc(c) + '" data-base="' + bb + '" title="' + bb + '">' + lbl + '</span>';
-        ctrl = '<span class="hbase" title="Number base — 10 dec · 16 hex · 2 bin (click active to reset)">' + opt('dec', '10') + opt('hex', '16') + opt('bin', '2') + '</span>';
-      }
+      const ctrl = numCols[c]
+        ? '<span class="hb' + (b !== 'raw' ? ' on' : '') + '" data-col="' + esc(c) + '" title="Number base (click to cycle: raw → 10 → 16 → 2)">' + baseLbl(b) + '</span>'
+        : '';
       h += '<th class="' + cls + '" data-col="' + esc(c) + '" draggable="true" ' +
         'title="Click: sort  ·  Drag: reorder  ·  Right-click: columns">' +
         ctrl + esc(c) + '<span class="sort-ind">' + ind + '</span></th>';
@@ -1236,8 +1236,8 @@ function getHtml(): string {
     const hb = e.target.closest('.hb');
     if (hb) {
       const name = paneName(e); const st = secState[name];
-      if (st) { st.colBase = st.colBase || {}; const l = hb.dataset.col, nb = hb.dataset.base;
-        st.colBase[l] = (st.colBase[l] === nb) ? 'raw' : nb;   // aynı tabana tıkla -> raw
+      if (st) { st.colBase = st.colBase || {}; const l = hb.dataset.col;
+        st.colBase[l] = nextBase(st.colBase[l] || 'raw');   // raw -> dec -> hex -> bin -> raw
         paint(name); }
       e.stopPropagation();
       return;

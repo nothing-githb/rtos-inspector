@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.22.2] - 2026-06-06
+
+### Changed
+- The header base picker is now a **single click-to-cycle** button showing the
+  current base (`#` raw / `10` / `16` / `2`); each click advances raw → dec → hex
+  → bin → raw — instead of three separate `10 / 16 / 2` options.
+
 ## [0.22.1] - 2026-06-06
 
 ### Changed
