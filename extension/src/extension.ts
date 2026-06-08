@@ -261,6 +261,85 @@ function isNull(v: string): boolean {
   return v === '' || /\b0x0\b/.test(v);
 }
 
+// --- #5 per-element batch: bir elemanı TEK 'print' ile çekip alanları parse et ---
+// Düz üye yolu mu? (sadece ad/iç-içe ad: "id", "link.idx"; ${expr}/cast/operatör/[i] DEĞİL)
+function isPlainExpr(expr: string): boolean {
+  return /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test((expr ?? '').trim());
+}
+// GDB struct çıktısını derinlik/tırnak-duyarlı, üst-düzey virgülle böl
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = []; let depth = 0, q = '', buf = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) { buf += c; if (c === q && s[i - 1] !== '\\') q = ''; continue; }
+    if (c === '"' || c === "'") { q = c; buf += c; continue; }
+    if (c === '{' || c === '[' || c === '(') { depth++; buf += c; continue; }
+    if (c === '}' || c === ']' || c === ')') { depth--; buf += c; continue; }
+    if (c === ',' && depth === 0) { parts.push(buf); buf = ''; continue; }
+    buf += c;
+  }
+  if (buf.trim() !== '') parts.push(buf);
+  return parts;
+}
+// "{a = 1, name = 0x.. \"x\", tag = \"ab\\000\", sub = {b = 2}}" -> { a:"1", name:'0x.. "x"', ... }
+// (char dizisi gibi virgül içeren değerler, 'ad =' ile başlamayan parçalar öncekine eklenerek korunur)
+function parseStruct(blob: string): Record<string, string> | null {
+  if (!blob) return null;
+  const a = blob.indexOf('{'); const b = blob.lastIndexOf('}');
+  if (a === -1 || b === -1 || b < a) return null;
+  const parts = splitTopLevel(blob.slice(a + 1, b));
+  const map: Record<string, string> = {}; let last: string | null = null;
+  for (const p of parts) {
+    const m = p.match(/^\s*([A-Za-z_]\w*)\s*=\s*([\s\S]*)$/);
+    if (m) { map[m[1]] = m[2].trim(); last = m[1]; }
+    else if (last) { map[last] += ',' + p; }   // virgüllü değerin devamı (char dizisi/<repeats>)
+  }
+  return map;
+}
+// parse edilmiş üst-düzey haritadan nokta'lı yolu çöz (iç-içe struct'a iner)
+function structMember(map: Record<string, string> | null, path: string): string | undefined {
+  if (!map) return undefined;
+  const keys = path.split('.');
+  let v: string | undefined = map[keys[0]];
+  for (let i = 1; i < keys.length && v !== undefined; i++) {
+    const nm = parseStruct(v); if (!nm) return undefined; v = nm[keys[i]];
+  }
+  return v;
+}
+
+// Bir satırın alanlarını topla. #5: >=2 düz-üye alan varsa elemanı TEK 'print' ile çekip
+// parse eder (eşleşmezse alan-alan fallback). when/wrap/bar/${expr}/computed alanlar her zaman alan-alan.
+async function collectRowFields(
+  session: vscode.DebugSession, fields: FieldCfg[], frameId: number | undefined,
+  rawElem: string, wrapElem: string, access: string
+): Promise<Row> {
+  const row: Row = {};
+  let parsed: Record<string, string> | null = null;
+  const plainCount = fields.filter(f => isPlainExpr(f.expr) && !f.wrap).length;
+  if (plainCount >= 2) {
+    const blobExpr = access === '->' ? `*(${wrapElem})` : `(${wrapElem})`;
+    parsed = parseStruct((await gdbExec(session, `print ${blobExpr}`, frameId)).toString());
+  }
+  for (const f of fields) {
+    if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, rawElem, wrapElem, access)}`, frameId)))) { row[f.label] = ''; continue; }
+    let accExpr = resolveFieldExpr(f.expr, rawElem, wrapElem, access);
+    if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');
+    let val: string | undefined;
+    if (parsed && !f.wrap && isPlainExpr(f.expr)) {
+      const m = structMember(parsed, f.expr);
+      if (m !== undefined) val = cleanValue(m);                 // batch'ten
+    }
+    if (val === undefined) val = cleanValue(await gdbExec(session, `print ${accExpr}`, frameId));   // fallback
+    row[f.label] = val;
+    if (f.editable) row['__edit__' + f.label] = accExpr;
+    if (f.bar) {
+      const mx = barMaxExpr(f);
+      if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, rawElem, wrapElem, access)}`, frameId));
+    }
+  }
+  return row;
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -312,20 +391,7 @@ async function collectSection(
       // eleman: ((cast*)root)[i]; field'a erişmeden ÖNCE wrap ile sarmalanır
       const elemRaw = `${base}[${i}]`;
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw; // (wrap)<access>field
-      const row: Row = {};
-      for (const f of cfg.fields) {
-        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        let accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
-        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
-        const v = await gdbExec(session, `print ${accExpr}`, frameId);
-        row[f.label] = cleanValue(v);
-        if (f.editable) row['__edit__' + f.label] = accExpr;
-        if (f.bar) {
-          const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
-        }
-      }
-      rows.push(row);
+      rows.push(await collectRowFields(session, cfg.fields, frameId, elemRaw, elem, access));
     }
   } else if (cfg.mode === 'index_list') {
     // Dizi içinde index ile bağlı liste: head index'inden başla, next alanı sonraki index'i verir
@@ -357,20 +423,7 @@ async function collectSection(
       const elemRaw = `${base}[${idx}]`;
       // field'a erişmeden ÖNCE wrap ile sarmalanır (çıktı parantezlenir: (wrap)<access>field)
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw;
-      const row: Row = {};
-      for (const f of cfg.fields) {
-        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        let accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
-        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
-        const v = await gdbExec(session, `print ${accExpr}`, frameId);
-        row[f.label] = cleanValue(v);
-        if (f.editable) row['__edit__' + f.label] = accExpr;
-        if (f.bar) {
-          const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
-        }
-      }
-      rows.push(row);
+      rows.push(await collectRowFields(session, cfg.fields, frameId, elemRaw, elem, access));
       // next şablonu: ${expr}=ham eleman (wrap ile aynı), ${wrapped_expr}=wrap/cast'li eleman; yoksa elem<access>next
       const hasTpl = cfg.next && (cfg.next.indexOf('${expr}') !== -1 || cfg.next.indexOf('${wrapped_expr}') !== -1);
       const nextExpr = hasTpl
@@ -392,20 +445,7 @@ async function collectSection(
       if (isNull(cur)) { reason = 'reached NULL'; break; }
       // node (cursor); field'a erişmeden ÖNCE wrap ile sarmalanır
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')' : cursor; // (wrap)->field
-      const row: Row = {};
-      for (const f of cfg.fields) {
-        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, cursor, elem, '->')}`, frameId)))) { row[f.label] = ''; continue; }
-        let accExpr = resolveFieldExpr(f.expr, cursor, elem, '->');
-        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
-        const v = await gdbExec(session, `print ${accExpr}`, frameId);
-        row[f.label] = cleanValue(v);
-        if (f.editable) row['__edit__' + f.label] = accExpr;
-        if (f.bar) {
-          const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, cursor, elem, '->')}`, frameId));
-        }
-      }
-      rows.push(row);
+      rows.push(await collectRowFields(session, cfg.fields, frameId, cursor, elem, '->'));
       log.trace(`linked_list "${name}" node ${guard - 1}: cursor=${cur} → advance via ${cursor}->${cfg.next}`);
       // #2: advance + sonraki değeri (null-check) TEK çağrıda — eski 'set' + ayrı 'print cursor' yerine
       cur = cleanValue(await gdbExec(session, `print ${cursor} = ${cursor}->${cfg.next}`, frameId));

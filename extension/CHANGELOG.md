@@ -2,6 +2,19 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.32.0] - 2026-06-08
+
+### Changed (performance)
+- **Per‑element batch fetch.** When a section has ≥2 plain member fields, each row
+  is now read with **one** `print *elem` (or `print elem`) and parsed client‑side,
+  instead of one `print` per field — **~5× fewer GDB round‑trips per row**
+  (measured: array **5.1×**, linked list **3.8×** in raw GDB; far more over the
+  debug adapter). Computed `${expr}`/`${wrapped_expr}`, `cast`/`wrap` (section and
+  field), `when`, `bar.max`, and any value the parser can't extract **fall back**
+  to a per‑field `print`, so every feature behaves exactly as before. Validated
+  against real GDB output for value structs, pointer nodes, and char‑array members
+  (batched values are byte‑identical to per‑field). See `docs/PERFORMANCE.md`.
+
 ## [0.31.0] - 2026-06-08
 
 ### Changed (performance)

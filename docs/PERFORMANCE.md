@@ -193,15 +193,19 @@ in production than the raw‑GDB table shows.
 
 ### Structural (bigger, highest ceiling — pick the batching primary per mode)
 
-5. **Per‑element / whole‑array batch fetch** (this study's headline). For `array` /
-   contiguous `index_list`: `print ((cast)root)[0]@count` → **~1 call/section**. For
-   `linked_list` / non‑contiguous: `print *elem` → **1 call/row**. Then parse the
-   `{field = val, …}` blob client‑side (≈2 ms for 340 KB). **Measured 5–10×** in raw
-   GDB; far more over the adapter. Prereqs: `set max-value-size/print elements/print
-   repeats unlimited` (one‑time per refresh; **do *not* `set print address off`** —
-   `isNull()` needs the `0x0` text). Keep the per‑field path as an **always‑on
-   fallback** for `${expr}`/`${wrapped_expr}` arithmetic, `cast`/`wrap`, and `bar.max`
-   (these have no single child to read from a blob).
+5. **Per‑element batch fetch.** ✅ **Implemented in 0.32.0** (per‑element form).
+   When a section has ≥2 **plain** member fields, the row is read with **one**
+   `print *elem` (pointer) / `print elem` (value), and those fields are parsed from
+   the `{field = val, …}` blob client‑side (`parseStruct`/`structMember`). Non‑plain
+   fields — `${expr}`/`${wrapped_expr}` arithmetic, `cast`/`wrap` (section *and*
+   field), `when`, `bar.max`, computed/`[i]` — **always fall back** to a per‑field
+   `print`, and any parse miss falls back too (never wrong). **Measured: array
+   per‑field 2596 ms → per‑element 508 ms (5.1×); list 2392 → 636 ms (3.8×)** on the
+   2000‑row bench; parsing the blob is ~2 ms. Validated against real GDB output for
+   all three modes (value struct, pointer node, char‑array member) — batched values
+   are byte‑identical to per‑field. *(The whole‑array `@count` form — 10.6× — and
+   `variablesReference` remain future options; per‑element already covers every mode
+   universally.)*
 6. **`variablesReference` + `variables` request.** Evaluate the element to a handle,
    then one `variables` request returns **all declared fields structured** (no string
    parsing). Robust where it works on cppdbg; same fallback caveat as #5. Choose #5
