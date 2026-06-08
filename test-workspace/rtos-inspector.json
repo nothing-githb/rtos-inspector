@@ -27,17 +27,18 @@
     ]
   },
 
-  "//mutexes": "düz dizi (g_mutexes). 'Owner' = sahip thread id'si -> 'threads' bölümüne LİNK (ID kolonuyla eşleşir). Tıklayınca o thread'e gider (gruplu ağaçta grubu açıp satırı vurgular). owner=0 'free'.",
+  "//mutexes": "düz dizi (g_mutexes). KOŞULLU ALANLAR ('when' ile variant): kilitliyse 'Owner' (sahip thread'e LİNK), kilitli değilse 'Waiting' gösterilir; öbürü boş kalır. 'Owner' link -> 'threads' (ID ile eşleşir, tıklayınca grubu açıp satırı vurgular).",
   "mutexes": {
     "mode": "array",
     "root": "g_mutexes",
     "count": "g_mutex_count",
     "access": ".",
     "fields": [
-      { "label": "ID",     "expr": "id" },
-      { "label": "Name",   "expr": "name" },
-      { "label": "Owner",  "expr": "owner", "link": { "section": "threads", "match": "ID" } },
-      { "label": "Locked", "expr": "locked" }
+      { "label": "ID",      "expr": "id" },
+      { "label": "Name",    "expr": "name" },
+      { "label": "Locked",  "expr": "locked" },
+      { "label": "Owner",   "expr": "owner",   "when": "locked",            "link": { "section": "threads", "match": "ID" } },
+      { "label": "Waiting", "expr": "waiters", "when": "${expr}.locked == 0" }
     ]
   },
 

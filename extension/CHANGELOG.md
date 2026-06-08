@@ -2,6 +2,17 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.28.0] - 2026-06-08
+
+### Added
+- **Conditional fields (`when`).** A field can set **`"when": "<bool expr>"`**
+  (evaluated on the element, `${expr}`/`${wrapped_expr}` supported). When the
+  condition is false the cell stays **blank** and isn't fetched. Put several
+  `when` fields on one discriminator for **tagged‑union / variant** rows — e.g.
+  show `Owner` only when a mutex is **locked**, otherwise `Waiting`. *(Conditional
+  values were already possible via a GDB ternary in `expr`.)* The demo's `mutexes`
+  tab shows Owner ⇄ Waiting by `locked`.
+
 ## [0.27.0] - 2026-06-08
 
 ### Added

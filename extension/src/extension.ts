@@ -9,6 +9,7 @@ interface FieldCfg {
   label: string; expr: string; hidden?: boolean; base?: string;   // hidden: başlangıçta gizli; base: "dec"|"hex"|"bin"
   bar?: string | { max?: string; warn?: number; crit?: number };  // kullanım çubuğu: expr=used, bar.max=toplam (eleman-ifadesi veya sabit), warn/crit eşikleri (%)
   link?: { section: string; match?: string };  // çapraz-referans: değeri hedef bölümün 'match' kolonuyla eşleştir; tıklayınca oraya git (match yoksa hedefin ilk kolonu)
+  when?: string;  // koşullu alan: eleman üzerinde GDB bool ifadesi; yanlışsa hücre boş kalır (değer çekilmez). ${expr}/${wrapped_expr} kullanılabilir. Variant/tagged-union: aynı discriminator'a bağlı birkaç 'when'li alan.
 }
 interface SectionCfg {
   mode: 'linked_list' | 'array' | 'index_list';
@@ -278,6 +279,7 @@ async function collectSection(
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw; // (wrap)<access>field
       const row: Row = {};
       for (const f of cfg.fields) {
+        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
         const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
@@ -319,6 +321,7 @@ async function collectSection(
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw;
       const row: Row = {};
       for (const f of cfg.fields) {
+        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
         const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
@@ -350,6 +353,7 @@ async function collectSection(
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')' : cursor; // (wrap)->field
       const row: Row = {};
       for (const f of cfg.fields) {
+        if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, cursor, elem, '->')}`, frameId)))) { row[f.label] = ''; continue; }
         const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, cursor, elem, '->')}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
@@ -443,6 +447,13 @@ function resolveFieldExpr(expr: string, rawElem: string, wrappedElem: string, ac
     return expr.split('${wrapped_expr}').join('(' + wrappedElem + ')').split('${expr}').join('(' + rawElem + ')');
   }
   return `${wrappedElem}${access}${expr}`;
+}
+// koşullu alan (field.when) sonucu doğru mu? boş/0/false/NULL -> false
+function condTrue(s: string): boolean {
+  const t = (s ?? '').trim();
+  if (t === '' || t === '0' || /^false$/i.test(t)) return false;
+  if (/^(\([^)]*\)\s*)?0x0+$/.test(t)) return false;
+  return true;
 }
 function fieldBars(fields: FieldCfg[]): Record<string, { warn: number; crit: number }> {
   const m: Record<string, { warn: number; crit: number }> = {};
