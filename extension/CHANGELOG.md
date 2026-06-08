@@ -2,6 +2,20 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.29.0] - 2026-06-08
+
+### Added
+- **Edit values (opt-in).** Right-click a cell → **Edit value…** to change it in
+  the running program (GDB `set var`). Only fields marked **`"editable": true`**
+  are editable (assignable L-values; the exact write target is captured at fetch
+  time so it's correct in every mode). The cell context menu also offers **Copy
+  cell**. The demo's `mutexes` `Locked` is editable — toggling it flips the
+  conditional Owner / Waiting columns on the next refresh.
+
+### Changed
+- Clarified the read-only stance: **read-only by default**; writing happens only
+  for fields you explicitly opt into with `"editable": true`.
+
 ## [0.28.0] - 2026-06-08
 
 ### Added

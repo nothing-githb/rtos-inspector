@@ -37,7 +37,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   remembered per workspace. A section can also start hidden with `"hidden": true`
   in config.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), a `Count` of `0` is flagged red, `Waiting > 0` amber, plus a summary line per tab.
-- **Read-only & safe.** Debug Inspector only *reads* your data — it never calls functions or writes your program's memory, so program state is never disturbed.
+- **Read-only by default (optional editing).** Debug Inspector only *reads* your data — it never calls functions. A field can opt into editing with `"editable": true`; then right-click → **Edit value…** writes it with GDB `set var`. Right-click any cell also offers **Copy cell**.
 - **Leveled, color-coded logging.** A *Debug Inspector* Output channel (rendered with the `log` syntax so timestamps/severities/values are colorized); pick `off` / `info` / `debug`.
 
 ## Requirements
@@ -75,7 +75,7 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 | `groupBy` | grouping sections           | Names a master section; renders this section as a collapsible tree, one group per master element (use `${master}` in `root`/`head`/`count`/`nil`). |
 | `hidden`  | all                         | `true` starts this section's tab hidden (until shown from the ▤ Sections menu). Ignored once you change section visibility in the UI. |
 | `max`     | all                         | Traversal upper bound / safety guard (default `1024`). |
-| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). `expr` is appended after the element, OR a computed expression via `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (usage bar), and/or `"link": { "section": "<target>", "match": "<column>" }` (clickable cross-reference), and/or `"when": "<bool expr>"` (conditional field — blank when false; several on one discriminator = variant/tagged‑union). |
+| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). `expr` is appended after the element, OR a computed expression via `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (usage bar), and/or `"link": { "section": "<target>", "match": "<column>" }` (clickable cross-reference), and/or `"when": "<bool expr>"` (conditional field — blank when false; several on one discriminator = variant/tagged‑union), and/or `"editable": true` (right‑click → Edit value writes via GDB `set var`; assignable fields only). |
 
 #### Notes on the subtle fields
 

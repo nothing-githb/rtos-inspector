@@ -36,7 +36,7 @@
     "fields": [
       { "label": "ID",      "expr": "id" },
       { "label": "Name",    "expr": "name" },
-      { "label": "Locked",  "expr": "locked" },
+      { "label": "Locked",  "expr": "locked", "editable": true },
       { "label": "Owner",   "expr": "owner",   "when": "locked",            "link": { "section": "threads", "match": "ID" } },
       { "label": "Waiting", "expr": "waiters", "when": "${expr}.locked == 0" }
     ]

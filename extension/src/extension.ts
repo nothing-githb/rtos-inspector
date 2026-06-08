@@ -10,6 +10,7 @@ interface FieldCfg {
   bar?: string | { max?: string; warn?: number; crit?: number };  // kullanım çubuğu: expr=used, bar.max=toplam (eleman-ifadesi veya sabit), warn/crit eşikleri (%)
   link?: { section: string; match?: string };  // çapraz-referans: değeri hedef bölümün 'match' kolonuyla eşleştir; tıklayınca oraya git (match yoksa hedefin ilk kolonu)
   when?: string;  // koşullu alan: eleman üzerinde GDB bool ifadesi; yanlışsa hücre boş kalır (değer çekilmez). ${expr}/${wrapped_expr} kullanılabilir. Variant/tagged-union: aynı discriminator'a bağlı birkaç 'when'li alan.
+  editable?: boolean;  // sağ-tık 'Edit value' ile düzenlenebilir (GDB 'set var' ile debuggee'ye YAZAR). Sadece atanabilir (L-value) ifadeler; aksi halde GDB hata verir.
 }
 interface SectionCfg {
   mode: 'linked_list' | 'array' | 'index_list';
@@ -280,8 +281,10 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
+        const accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
+        if (f.editable) row['__edit__' + f.label] = accExpr;
         if (f.bar) {
           const mx = barMaxExpr(f);
           if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
@@ -322,8 +325,10 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
+        const accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
+        if (f.editable) row['__edit__' + f.label] = accExpr;
         if (f.bar) {
           const mx = barMaxExpr(f);
           if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
@@ -354,8 +359,10 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, cursor, elem, '->')}`, frameId)))) { row[f.label] = ''; continue; }
-        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, cursor, elem, '->')}`, frameId);
+        const accExpr = resolveFieldExpr(f.expr, cursor, elem, '->');
+        const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
+        if (f.editable) row['__edit__' + f.label] = accExpr;
         if (f.bar) {
           const mx = barMaxExpr(f);
           if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, cursor, elem, '->')}`, frameId));
@@ -633,7 +640,7 @@ function openPanel(context: vscode.ExtensionContext) {
   );
   panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
   panel.webview.onDidReceiveMessage(
-    (msg: any) => {
+    async (msg: any) => {
       if (msg?.type === 'refresh') { log?.debug('webview: manual refresh'); doRefresh(); return; }
       if (msg?.type === 'setColumns' && typeof msg.section === 'string' && msg.section) {
         log?.debug(`webview: setColumns ${msg.section} hidden=[${(msg.hidden || []).join(', ')}] refetch=${!!msg.refetch}`);
@@ -662,6 +669,27 @@ function openPanel(context: vscode.ExtensionContext) {
         extContext?.workspaceState.update(SECPREF_KEY, sectionPrefs);
         // reorder/hide tamamen istemci-tarafı (GDB yok); SADECE gizli bir bölüm gösterilince yeniden çek
         if (msg.reveal) doRefresh();
+      } else if (msg?.type === 'editValue' && typeof msg.expr === 'string' && msg.expr) {
+        // sağ-tık 'Edit value' -> GDB 'set var' ile debuggee'ye YAZ (yalnız editable alanlar)
+        if (!lastStopped) { vscode.window.showWarningMessage('Debug Inspector: debugger not stopped — cannot edit.'); return; }
+        const cur = typeof msg.current === 'string' ? msg.current : '';
+        const val = await vscode.window.showInputBox({
+          title: 'Debug Inspector — edit value (writes to the program!)',
+          prompt: `set var ${msg.expr} =`,
+          value: cur
+        });
+        if (val === undefined || val === '') return;   // iptal
+        let frameId: number | undefined;
+        try {
+          const stk = await lastStopped.session.customRequest('stackTrace', { threadId: lastStopped.threadId, startFrame: 0, levels: 1 });
+          frameId = stk?.stackFrames?.[0]?.id;
+        } catch { /* global ifadeler için frame gerekmez */ }
+        const res = (await gdbExec(lastStopped.session, `set var ${msg.expr} = ${val}`, frameId)).toString().replace(/\s+/g, ' ').trim();
+        log?.info(`edit: set var ${msg.expr} = ${val}  ⇒  ${res || 'ok'}`);
+        if (/no symbol|cannot|lvalue|error|invalid|<<error/i.test(res)) {
+          vscode.window.showErrorMessage(`Debug Inspector: edit failed — ${res}`);
+        }
+        doRefresh();
       }
     },
     null,
@@ -729,6 +757,8 @@ function getHtml(): string {
     background: rgba(59,158,255,0.22);
   }
   .cols-grip { opacity: 0.45; font-size: 12px; cursor: grab; user-select: none; }
+  .cm-item { padding: 6px 12px; cursor: pointer; border-radius: 5px; white-space: nowrap; font-size: 12px; }
+  .cm-item:hover { background: var(--vscode-list-hoverBackground); }
   .cols-item label { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12.5px; }
   .cols-move button {
     appearance: none; cursor: pointer; border: none; background: transparent;
@@ -1247,7 +1277,9 @@ function getHtml(): string {
         const ov = isDash(changed[ck]) ? '-' : changed[ck];
         inner += '<span class="old" title="previous value">' + esc(ov) + '</span>';
       }
-      h += '<td' + clsAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
+      const ed = row['__edit__' + c];
+      const editAttr = (ed != null) ? ' data-edit="' + esc(ed) + '"' : '';
+      h += '<td' + clsAttr + editAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
     }
     return h + '</tr>';
   }
@@ -1401,6 +1433,11 @@ function getHtml(): string {
     // çapraz-referans linki: hedef nesneye git
     const xref = e.target.closest('.xref');
     if (xref) { e.preventDefault(); e.stopPropagation(); gotoXref(xref.dataset.sec, xref.dataset.match, xref.dataset.val); return; }
+    // hücre bağlam menüsü: kopya / düzenle
+    const cc = e.target.closest('.cell-copy');
+    if (cc) { vscodeApi.postMessage({ type: 'copy', text: cc.dataset.text || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
+    const ce = e.target.closest('.cell-edit');
+    if (ce) { vscodeApi.postMessage({ type: 'editValue', expr: ce.dataset.edit, current: ce.dataset.cur || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const colsBtn = e.target.closest('.cols-btn');
     if (colsBtn) {
       e.stopPropagation();
@@ -1577,19 +1614,38 @@ function getHtml(): string {
     clearGhost();
     dragCol = null; dragName = null; menuDragLabel = null; menuDragName = null;
   });
-  panesEl.addEventListener('contextmenu', e => {
-    const th = e.target.closest('th[data-col]');
-    if (!th) return;
-    const name = paneName(e);
-    if (!secState[name]) return;
-    e.preventDefault();
-    for (const mm of panesEl.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
-    buildColsMenu(name);
-    const menu = colsMenuEl(name);
+  function popMenu(name, e, html) {
+    for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+    const menu = colsMenuEl(name); if (!menu) return;
+    menu.innerHTML = html;
     menu.style.position = 'fixed';
     menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
     menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
     menu.classList.remove('hidden');
+  }
+  panesEl.addEventListener('contextmenu', e => {
+    const name = paneName(e);
+    if (!name || !secState[name]) return;
+    const th = e.target.closest('th[data-col]');
+    if (th) {   // başlık: kolon menüsü
+      e.preventDefault();
+      for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden');
+      buildColsMenu(name);
+      const menu = colsMenuEl(name);
+      menu.style.position = 'fixed';
+      menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+      menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
+      menu.classList.remove('hidden');
+      return;
+    }
+    const td = e.target.closest('tbody td');
+    if (td && !td.querySelector('.bar')) {   // veri hücresi: kopya (+ düzenlenebilirse edit)
+      e.preventDefault();
+      const txt = (td.textContent || '').trim();
+      let h = '<div class="cm-item cell-copy" data-text="' + esc(txt) + '">Copy cell</div>';
+      if (td.dataset.edit) h += '<div class="cm-item cell-edit" data-edit="' + esc(td.dataset.edit) + '" data-cur="' + esc(td.getAttribute('title') || '') + '">Edit value…</div>';
+      popMenu(name, e, h);
+    }
   });
 
   document.addEventListener('click', () => {
