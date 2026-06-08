@@ -11,6 +11,7 @@ interface FieldCfg {
   link?: { section: string; match?: string };  // çapraz-referans: değeri hedef bölümün 'match' kolonuyla eşleştir; tıklayınca oraya git (match yoksa hedefin ilk kolonu)
   when?: string;  // koşullu alan: eleman üzerinde GDB bool ifadesi; yanlışsa hücre boş kalır (değer çekilmez). ${expr}/${wrapped_expr} kullanılabilir. Variant/tagged-union: aynı discriminator'a bağlı birkaç 'when'li alan.
   editable?: boolean;  // sağ-tık 'Edit value' ile düzenlenebilir (GDB 'set var' ile debuggee'ye YAZAR). Sadece atanabilir (L-value) ifadeler; aksi halde GDB hata verir.
+  wrap?: string;  // alana ERİŞTİKTEN SONRA değeri dönüştür; ${expr} = erişilen alan değeri. Örn expr "data" + wrap "((widget_t *)${expr})->x" -> ((widget_t *)(elem.data))->x. Sonuç hücreye yazılır.
 }
 interface SectionCfg {
   mode: 'linked_list' | 'array' | 'index_list';
@@ -120,9 +121,10 @@ export function activate(context: vscode.ExtensionContext) {
                 const threadId = msg.body?.threadId ?? 0;
                 lastStopped = { session, threadId };
                 log?.debug(`debug stopped (thread ${threadId})${paused ? ' [paused — skipping refresh]' : ''}`);
-                if (!paused) refresh(session, threadId);
+                if (!paused) doRefresh();   // debounced + iptal: hızlı adımlamada önceki refresh'ler atlanır
               } else if (msg.event === 'continued') {
                 log?.trace('debug continued');
+                cancelRefresh();            // çalışmaya devam etti: bekleyen refresh'i iptal et (durmuşken çekemeyiz)
                 if (!paused) panel?.webview.postMessage({ type: 'running' });
               }
             }
@@ -162,15 +164,43 @@ function setupConfigWatcher(context: vscode.ExtensionContext) {
   }
   configWatcher = vscode.workspace.createFileSystemWatcher(pattern);
   const onChange = () => {
-    if (panel && lastStopped) refresh(lastStopped.session, lastStopped.threadId);
+    if (panel && lastStopped) doRefresh();   // çok sayıda kayıt -> debounce ile tek (en son) refresh
   };
   configWatcher.onDidChange(onChange);
   configWatcher.onDidCreate(onChange);
   context.subscriptions.push(configWatcher);
 }
 
+// --- debounce + iptal: hızlı arka arkaya istekler (config kaydı, hızlı adımlama)
+// tek bir refresh'e indirgenir; çalışan refresh yeni istek gelince geçersiz olur ve
+// en güncel state ile bir kez daha koşulur (önceki refresh'ler iptal/atlanır) ---
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let refreshing = false;
+let pendingRefresh = false;
+let refreshGen = 0;                 // her istek artar; refresh bunu izleyip eskiyi iptal eder
+const REFRESH_DEBOUNCE_MS = 140;
+
 function doRefresh() {
-  if (lastStopped) refresh(lastStopped.session, lastStopped.threadId);
+  refreshGen++;                     // bekleyen/çalışan refresh'i geçersiz kıl
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => { refreshTimer = undefined; void runRefresh(); }, REFRESH_DEBOUNCE_MS);
+}
+function cancelRefresh() {          // program devam edince: planlanan refresh'i iptal et + çalışanı geçersiz kıl
+  refreshGen++;
+  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = undefined; }
+}
+async function runRefresh() {
+  if (refreshing) { pendingRefresh = true; return; }   // zaten çalışıyor -> bitince en günceliyle bir kez daha
+  if (!panel || !lastStopped) return;
+  refreshing = true;
+  try {
+    do {
+      pendingRefresh = false;
+      await refresh(lastStopped.session, lastStopped.threadId, refreshGen);
+    } while (pendingRefresh && !!lastStopped);
+  } finally {
+    refreshing = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +311,8 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        const accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        let accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
         const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.editable) row['__edit__' + f.label] = accExpr;
@@ -325,7 +356,8 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, elemRaw, elem, access)}`, frameId)))) { row[f.label] = ''; continue; }
-        const accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        let accExpr = resolveFieldExpr(f.expr, elemRaw, elem, access);
+        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
         const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.editable) row['__edit__' + f.label] = accExpr;
@@ -359,7 +391,8 @@ async function collectSection(
       const row: Row = {};
       for (const f of cfg.fields) {
         if (f.when && !condTrue(cleanValue(await gdbExec(session, `print ${resolveFieldExpr(f.when, cursor, elem, '->')}`, frameId)))) { row[f.label] = ''; continue; }
-        const accExpr = resolveFieldExpr(f.expr, cursor, elem, '->');
+        let accExpr = resolveFieldExpr(f.expr, cursor, elem, '->');
+        if (f.wrap) accExpr = f.wrap.split('${expr}').join('(' + accExpr + ')');   // alana eriştikten SONRA sarmala
         const v = await gdbExec(session, `print ${accExpr}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.editable) row['__edit__' + f.label] = accExpr;
@@ -577,8 +610,9 @@ async function buildGrouped(
 // ---------------------------------------------------------------------------
 // Yenileme
 // ---------------------------------------------------------------------------
-async function refresh(session: vscode.DebugSession, threadId: number) {
+async function refresh(session: vscode.DebugSession, threadId: number, gen?: number) {
   if (!panel) return;
+  const stale = () => gen !== undefined && gen !== refreshGen;   // daha yeni istek geldiyse bu refresh iptal
   const cfg = loadConfig();
   if (!cfg) return;
 
@@ -604,6 +638,7 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   // 1. geçiş: gruplanmayan (bağımsız/master) bölümleri topla (gizli + master-hedefi olmayanları atla)
   const masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
   for (let i = 0; i < secs.length; i++) {
+    if (stale()) return;   // bölümler arası iptal: daha yeni refresh isteği var
     const { name, cfg: scfg } = secs[i];
     if (isGrouped(scfg)) continue;
     if (hiddenSet.has(name) && !masterTargets.has(name)) continue;   // gizli & gruplama hedefi değil -> çekme
@@ -614,10 +649,12 @@ async function refresh(session: vscode.DebugSession, threadId: number) {
   // 2. geçiş: görünür bölümleri kur (gizli olanları atla)
   const built: Record<string, Section> = {};
   for (let i = 0; i < secs.length; i++) {
+    if (stale()) return;
     const { name, cfg: scfg } = secs[i];
     if (hiddenSet.has(name)) continue;
     built[name] = isGrouped(scfg) ? await buildGrouped(session, frameId, i, name, scfg, masters) : masters[name].sec;
   }
+  if (stale()) return;   // son anda daha yeni istek geldiyse bu (eski) sonucu gönderme
   const sections = order.filter(n => !hiddenSet.has(n)).map(n => built[n]).filter(Boolean);
 
   panel.webview.postMessage({
@@ -655,7 +692,7 @@ function openPanel(context: vscode.ExtensionContext) {
         paused = !!msg.paused;
         log?.info(`webview: ${paused ? 'paused' : 'resumed'}`);
         extContext?.workspaceState.update(PAUSED_KEY, paused);
-        if (!paused && lastStopped) refresh(lastStopped.session, lastStopped.threadId);
+        if (!paused && lastStopped) doRefresh();
       } else if (msg?.type === 'copy' && typeof msg.text === 'string') {
         vscode.env.clipboard.writeText(msg.text);
         log?.debug(`webview: copied ${msg.text.length} chars to clipboard`);

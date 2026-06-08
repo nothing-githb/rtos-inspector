@@ -160,11 +160,12 @@ in production than the raw‑GDB table shows.
 
 ### Quick wins (low effort, low risk — do first)
 
-1. **Debounce `stopped` events + stop‑generation token.** The stop handler calls
-   `refresh()` on *every* stop with no debounce/guard; holding F10/F11 fires N full
-   `Σ(rows×fields)` walks that overlap. A ~80–150 ms trailing debounce + a generation
-   counter that discards superseded refreshes collapses a 10‑step burst into ~1
-   refresh. **Multiplicative across all modes; zero feature risk.**
+1. **Debounce `stopped` events + stop‑generation token.** ✅ **Implemented in
+   0.30.0.** The stop / config‑watch / manual / edit paths now route through a
+   ~140 ms‑debounced `doRefresh()` with an in‑flight guard + a `refreshGen`
+   counter: rapid bursts collapse to one, refreshes never overlap, and a newer
+   request aborts the older one between sections so only the latest completes.
+   **Multiplicative across all modes; zero feature risk.**
 2. **Make the linked‑list walk stateless.** Drop the per‑node `set $cursor` (advance) +
    `print $cursor` (null‑check) — read the node and its `next`/NULL from the *same*
    result and chase the parsed pointer. Removes **~2 round‑trips per node** (~3× fewer

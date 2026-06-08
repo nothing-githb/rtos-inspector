@@ -98,17 +98,16 @@
     ]
   },
 
-  "//boxes": "cast'ten ÖNCE bir field hop: her g_boxes gözü {void *data}. wrap ile asıl veriye 'data' ile ulaşılıp cast edilir: ((widget_t *)(elem.data))->field. 'hidden':true ile sekme başlangıçta GİZLİ (▤ Sections menüsünden açılır).",
+  "//boxes": "field-düzeyi wrap: her göz {void *data}. Önce 'data' alanına eriş, SONRA field 'wrap' ile ((widget_t *)${expr})->üye'ye dönüştür; ${expr}=erişilen alan değeri. (section 'wrap' yerine field 'wrap'.) hidden:true.",
   "boxes": {
     "mode": "array",
     "root": "g_boxes",
     "count": "3",
     "hidden": true,
-    "wrap": "((widget_t *)(${expr}.data))",
-    "access": "->",
+    "access": ".",
     "fields": [
-      { "label": "X",     "expr": "x" },
-      { "label": "Label", "expr": "label" }
+      { "label": "X",     "expr": "data", "wrap": "((widget_t *)${expr})->x" },
+      { "label": "Label", "expr": "data", "wrap": "((widget_t *)${expr})->label" }
     ]
   },
 

@@ -2,6 +2,22 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.30.0] - 2026-06-08
+
+### Changed
+- **Refresh is debounced and cancels superseded runs.** Saving the config many
+  times quickly (or fast stepping) no longer piles up refreshes: requests within
+  ~140 ms collapse to one, an in‑flight refresh never runs concurrently, and a
+  newer request **aborts the older one between sections** so only the **latest**
+  runs to completion. Resuming the program cancels a pending refresh.
+
+### Added
+- **Per-field `wrap` (post-access transform).** A field can `"wrap"` its value
+  *after* access — `${expr}` is the accessed field value — e.g. `"expr": "data"`
+  with `"wrap": "((widget_t *)${expr})->x"`. Lets each column reinterpret an
+  untyped member differently (variant payloads), distinct from the section‑level
+  `wrap`. The demo's `boxes` tab now uses a field `wrap`.
+
 ## [0.29.0] - 2026-06-08
 
 ### Added
