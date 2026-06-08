@@ -488,6 +488,16 @@ open the Semaphores tab to see every process's semaphores as a tree. The
 `.vscode/{launch,tasks}.example.json` templates (copy to `launch.json` /
 `tasks.json` and set your toolchain path) include Cygwin GDB tips in comments.
 
+## Performance
+
+Refresh cost is dominated by the **number of GDB round‑trips** (today one `print`
+per field per row). [**docs/PERFORMANCE.md**](docs/PERFORMANCE.md) has a full study
+on a large environment (2000 rows × 10 fields) with **real measurements** (GDB
+15.2): fetching one whole element or whole array per call is **5–10× faster** in raw
+GDB time (and far more over the debug adapter), with parsing the bigger blob costing
+~2 ms. It also ranks the concrete optimizations (debounce stops, stateless list walk,
+batch fetch, lazy per‑tab).
+
 ## License
 
 [MIT](extension/LICENSE)
