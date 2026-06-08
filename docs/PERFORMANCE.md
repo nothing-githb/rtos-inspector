@@ -81,6 +81,7 @@ Both run on the **same stopped state** at `inspect_point`.
 | **array, per element** `print g_big[i]` | 2,000 | **508 ms** | 254 | **5.1×** |
 | **array, whole** `print g_big` | 1 | **244 ms** | — | **10.6×** |
 | **list, per field** (cursor + 10 fields + advance) | 24,001 | **2392 ms** | 100 | 1.0× (baseline) |
+| **list, stateless (0.31.0)** merged advance/null‑check | 22,001 | **2306 ms** | — | **1.04×** (−2000 round‑trips) |
 | **list, per element** `print *cursor` + advance | 4,001 | **636 ms** | 159 | **3.8×** |
 
 - **Per‑element** (`print *elem` → all 10 fields in one call) is **5.1× faster**
@@ -88,6 +89,13 @@ Both run on the **same stopped state** at `inspect_point`.
 - **Whole‑array** (`print g_big`) is **10.6× faster** and is a **single** call — over
   the live adapter (where each call also crosses IPC) this is the difference between
   ~20,000 round‑trips and **1**.
+- **Stateless list (0.31.0, shipped):** only **−1.04×** (−86 ms) in *raw GDB* time
+  because GDB's own per‑command cost is tiny (~0.1 ms), but it removes **one DAP
+  round‑trip per node** (−2000 here). Over the live adapter each removed round‑trip
+  saves the full evaluate latency, so the real‑world saving scales with list length
+  × per‑call overhead (≈ N × 0.17 ms by the MI measurement, and more through VS Code
+  IPC). The 3.8× jump still needs the `print *elem` parser path (#5), which this
+  change deliberately avoids.
 
 ### B. Serialized round‑trip latency (GDB/MI, one‑at‑a‑time)
 
@@ -166,13 +174,22 @@ in production than the raw‑GDB table shows.
    counter: rapid bursts collapse to one, refreshes never overlap, and a newer
    request aborts the older one between sections so only the latest completes.
    **Multiplicative across all modes; zero feature risk.**
-2. **Make the linked‑list walk stateless.** Drop the per‑node `set $cursor` (advance) +
-   `print $cursor` (null‑check) — read the node and its `next`/NULL from the *same*
-   result and chase the parsed pointer. Removes **~2 round‑trips per node** (~3× fewer
-   calls on lists). Keep `isNull()`/cycle‑guard semantics.
-3. **Cache `frameId` per stop** instead of a `stackTrace` round‑trip every refresh.
-4. **Gate `gdbExec`'s `.replace(/\s+/g,' ')`** behind the log level (it runs on every
-   value even when logging is off). Pure CPU win on large tables.
+2. **Make the linked‑list walk stateless.** ✅ **Implemented in 0.31.0** (no‑parser
+   form). Merged the per‑node `print $cursor` (null‑check) + `set $cursor =
+   $cursor->next` (advance) into **one** `print $cursor = $cursor->next` (advances
+   *and* returns the next value for the null‑check). Removes the dedicated
+   null‑check round‑trip → **one fewer round‑trip per node** (24,001 → 22,001
+   commands for the 2000‑node bench). The big `print *elem` form (read the whole
+   node in one call) needs the parser → see #5.
+3. **One‑time compacting print settings.** ✅ **Implemented in 0.31.0** (safe
+   subset): once per session `set print pretty off` + `set max-value-size
+   unlimited` (consistent single‑line output, no "value too large" errors). The
+   aggressive `elements/repeats unlimited` part is deferred to the batching work
+   (#5) since it changes per‑field truncation.
+4. **Cache `frameId` per stop + gate the hot‑path regex.** ✅ **Implemented in
+   0.31.0.** `frameId` is fetched once per stop and cached on `lastStopped` (no
+   `stackTrace` round‑trip on config/edit/manual refreshes); `gdbExec`'s
+   `.replace(/\s+/g,' ')` + failure‑regex now run only when logging is on.
 
 ### Structural (bigger, highest ceiling — pick the batching primary per mode)
 

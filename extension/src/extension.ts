@@ -48,7 +48,8 @@ interface ColPref { order: string[]; hidden: string[]; }
 // Global durum
 // ---------------------------------------------------------------------------
 let panel: vscode.WebviewPanel | undefined;
-let lastStopped: { session: vscode.DebugSession; threadId: number } | undefined;
+let lastStopped: { session: vscode.DebugSession; threadId: number; frameId?: number } | undefined;
+let printSetupFor: vscode.DebugSession | undefined;   // #3: kompakt print ayarları bu oturumda yapıldı mı
 // Output: config-driven seviyeli logger (rtosInspector.logLevel)
 // Seçilebilir seviyeler: off / info / debug. trace -> debug tier, warn/error -> info tier.
 const LOG_LEVELS: Record<string, number> = { debug: 20, trace: 20, info: 30, warn: 30, error: 30, off: 100 };
@@ -218,11 +219,14 @@ async function gdbExec(
       frameId
     });
     const out = (resp?.result ?? '').toString();
-    const clean = out.replace(/\s+/g, ' ').trim();
-    log?.debug(`gdb ▸ ${command}`);                 // hazırlanan erişim string'i
-    log?.trace(`gdb ◂ ${clean}`);                   // sonuç
-    if (/no symbol|cannot|not (defined|available)|incomplete|error/i.test(clean))
-      log?.warn(`gdb access failed: ${command}  ⇒  ${clean}`);
+    // #7: log kapalıysa (off) her sonuçta regex temizleme + hata-tespiti yapma (sıcak yol)
+    if (logThreshold < LOG_LEVELS.off) {
+      const clean = out.replace(/\s+/g, ' ').trim();
+      log.debug(`gdb ▸ ${command}`);                 // hazırlanan erişim string'i
+      log.trace(`gdb ◂ ${clean}`);                   // sonuç
+      if (/no symbol|cannot|not (defined|available)|incomplete|error/i.test(clean))
+        log.warn(`gdb access failed: ${command}  ⇒  ${clean}`);
+    }
     return out;
   } catch (e: any) {
     log?.warn(`gdb access error: ${command}  ⇒  ${e?.message ?? e}`);
@@ -379,12 +383,12 @@ async function collectSection(
     log.debug(`index_list "${name}": ${rows.length} row(s); stopped: ${reason}`);
   } else {
     log.debug(`linked_list "${name}": root=${cfg.root}, advance via cursor->${cfg.next}, access="->"`);
-    await gdbExec(session, `set ${cursor} = ${cfg.root}`, frameId);
     let guard = 0;
     let reason = 'end';
+    // #2: cursor=root + ilk değer (null-check) TEK çağrıda; düğüm başına ayrı 'print cursor' turu yok
+    let cur = cleanValue(await gdbExec(session, `print ${cursor} = ${cfg.root}`, frameId));
     while (true) {
       if (guard++ >= max) { reason = `max bound (${max})`; break; }
-      const cur = cleanValue(await gdbExec(session, `print ${cursor}`, frameId));
       if (isNull(cur)) { reason = 'reached NULL'; break; }
       // node (cursor); field'a erişmeden ÖNCE wrap ile sarmalanır
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')' : cursor; // (wrap)->field
@@ -403,7 +407,8 @@ async function collectSection(
       }
       rows.push(row);
       log.trace(`linked_list "${name}" node ${guard - 1}: cursor=${cur} → advance via ${cursor}->${cfg.next}`);
-      await gdbExec(session, `set ${cursor} = ${cursor}->${cfg.next}`, frameId);
+      // #2: advance + sonraki değeri (null-check) TEK çağrıda — eski 'set' + ayrı 'print cursor' yerine
+      cur = cleanValue(await gdbExec(session, `print ${cursor} = ${cursor}->${cfg.next}`, frameId));
     }
     log.debug(`linked_list "${name}": ${rows.length} row(s); stopped: ${reason}`);
   }
@@ -616,11 +621,23 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
   const cfg = loadConfig();
   if (!cfg) return;
 
-  let frameId: number | undefined;
-  try {
-    const st = await session.customRequest('stackTrace', { threadId, startFrame: 0, levels: 1 });
-    frameId = st?.stackFrames?.[0]?.id;
-  } catch { /* ignore */ }
+  // #7: frameId'yi durak başına BİR KEZ çek, lastStopped'ta cache'le (config/edit/manual yenilemelerde stackTrace turu yok)
+  const sameStop = lastStopped && lastStopped.session === session && lastStopped.threadId === threadId;
+  let frameId: number | undefined = sameStop ? lastStopped!.frameId : undefined;
+  if (frameId === undefined) {
+    try {
+      const st = await session.customRequest('stackTrace', { threadId, startFrame: 0, levels: 1 });
+      frameId = st?.stackFrames?.[0]?.id;
+    } catch { /* ignore */ }
+    if (sameStop) lastStopped!.frameId = frameId;
+  }
+
+  // #3: oturum başına BİR KEZ kompakt/güvenli print ayarları (tutarlı tek-satır çıktı + büyük değerlerde hata yok)
+  if (printSetupFor !== session) {
+    printSetupFor = session;
+    await gdbExec(session, 'set print pretty off', frameId);
+    await gdbExec(session, 'set max-value-size unlimited', frameId);
+  }
 
   const secs = extractSections(cfg);
   const allNames = secs.map(s => s.name);

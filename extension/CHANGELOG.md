@@ -2,6 +2,22 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.31.0] - 2026-06-08
+
+### Changed (performance)
+- **Stateless linked‑list walk.** Merged the per‑node null‑check `print $cursor`
+  and the `set $cursor = $cursor->next` advance into a single
+  `print $cursor = $cursor->next` — **one fewer GDB round‑trip per node**
+  (24,001 → 22,001 commands on the 2000‑node benchmark; the saving scales with
+  list length over the debug adapter).
+- **`frameId` cached per stop** — config / edit / manual refreshes no longer issue
+  a `stackTrace` round‑trip.
+- **Hot‑path trimmed** — `gdbExec`'s whitespace‑collapse + failure‑regex now run
+  only when logging is on; plus a one‑time `set print pretty off` +
+  `set max-value-size unlimited` per session.
+
+See `docs/PERFORMANCE.md` for the measured before/after (real GDB 15.2 numbers).
+
 ## [0.30.2] - 2026-06-08
 
 ### Changed
