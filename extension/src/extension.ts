@@ -272,15 +272,15 @@ async function collectSection(
     log.debug(`array "${name}": count(${cfg.count})="${cleanValue(countRaw)}" → ${count}; element = ${base}[i]${access}<field>, access="${access}"`);
     for (let i = 0; i < Math.min(count, max); i++) {
       // eleman: ((cast*)root)[i]; field'a erişmeden ÖNCE wrap ile sarmalanır
-      let elem = `${base}[${i}]`;
-      if (cfg.wrap) elem = '(' + cfg.wrap.split('${expr}').join('(' + elem + ')') + ')'; // çıktıyı sar: (wrap)<access>field
+      const elemRaw = `${base}[${i}]`;
+      const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw; // (wrap)<access>field
       const row: Row = {};
       for (const f of cfg.fields) {
-        const v = await gdbExec(session, `print ${elem}${access}${f.expr}`, frameId);
+        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
           const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${elem}${access}${mx}`, frameId));
+          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
         }
       }
       rows.push(row);
@@ -317,11 +317,11 @@ async function collectSection(
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw;
       const row: Row = {};
       for (const f of cfg.fields) {
-        const v = await gdbExec(session, `print ${elem}${access}${f.expr}`, frameId);
+        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, elemRaw, elem, access)}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
           const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${elem}${access}${mx}`, frameId));
+          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, elemRaw, elem, access)}`, frameId));
         }
       }
       rows.push(row);
@@ -345,15 +345,14 @@ async function collectSection(
       const cur = cleanValue(await gdbExec(session, `print ${cursor}`, frameId));
       if (isNull(cur)) { reason = 'reached NULL'; break; }
       // node (cursor); field'a erişmeden ÖNCE wrap ile sarmalanır
-      let elem = cursor;
-      if (cfg.wrap) elem = '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')'; // çıktıyı sar: (wrap)->field
+      const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + cursor + ')') + ')' : cursor; // (wrap)->field
       const row: Row = {};
       for (const f of cfg.fields) {
-        const v = await gdbExec(session, `print ${elem}->${f.expr}`, frameId);
+        const v = await gdbExec(session, `print ${resolveFieldExpr(f.expr, cursor, elem, '->')}`, frameId);
         row[f.label] = cleanValue(v);
         if (f.bar) {
           const mx = barMaxExpr(f);
-          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${elem}->${mx}`, frameId));
+          if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, cursor, elem, '->')}`, frameId));
         }
       }
       rows.push(row);
@@ -433,6 +432,15 @@ function fieldBases(fields: FieldCfg[]): Record<string, string> {
 function barMaxExpr(f: FieldCfg): string {
   if (!f.bar) return '';
   return (typeof f.bar === 'string' ? f.bar : (f.bar.max ?? '')) || '';
+}
+// Alan/bar ifadesini GDB print ifadesine çevir. ${expr}=ham eleman, ${wrapped_expr}=wrap/cast'li eleman
+// (wrap/next ile AYNI semantik) -> elemanı birden çok kez referanslayan aritmetik (örn stack_top - stack_base) mümkün.
+// Yer tutucu yoksa varsayılan: (wrap'li eleman)<access><ifade>.
+function resolveFieldExpr(expr: string, rawElem: string, wrappedElem: string, access: string): string {
+  if (expr.indexOf('${expr}') !== -1 || expr.indexOf('${wrapped_expr}') !== -1) {
+    return expr.split('${wrapped_expr}').join('(' + wrappedElem + ')').split('${expr}').join('(' + rawElem + ')');
+  }
+  return `${wrappedElem}${access}${expr}`;
 }
 function fieldBars(fields: FieldCfg[]): Record<string, { warn: number; crit: number }> {
   const m: Record<string, { warn: number; crit: number }> = {};

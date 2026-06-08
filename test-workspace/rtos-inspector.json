@@ -12,7 +12,7 @@
     ]
   },
 
-  "//threads": "processes altında ağaç. 'Stack' kolonu = stack_used / stack_size kullanım çubuğu (warn 75%, crit 90%).",
+  "//threads": "processes altında ağaç. 'Stack' = stack_used/stack_size kullanım çubuğu. 'Free' = ${expr} ile iki üyeli aritmetik (stack_size - stack_used).",
   "threads": {
     "groupBy": "processes",
     "mode": "linked_list",
@@ -22,7 +22,8 @@
       { "label": "ID",    "expr": "id" },
       { "label": "Name",  "expr": "name" },
       { "label": "State", "expr": "state" },
-      { "label": "Stack", "expr": "stack_used", "bar": { "max": "stack_size", "warn": 75, "crit": 90 } }
+      { "label": "Stack", "expr": "stack_used", "bar": { "max": "stack_size", "warn": 75, "crit": 90 } },
+      { "label": "Free",  "expr": "${expr}->stack_size - ${expr}->stack_used" }
     ]
   },
 

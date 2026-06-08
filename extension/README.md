@@ -70,7 +70,7 @@ The config file (default `rtos-inspector.json`) is a JSON object that is a **map
 | `groupBy` | grouping sections           | Names a master section; renders this section as a collapsible tree, one group per master element (use `${master}` in `root`/`head`/`count`/`nil`). |
 | `hidden`  | all                         | `true` starts this section's tab hidden (until shown from the ▤ Sections menu). Ignored once you change section visibility in the UI. |
 | `max`     | all                         | Traversal upper bound / safety guard (default `1024`). |
-| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), and/or `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (render as a usage bar — `expr` = used, `max` = total). |
+| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). `expr` is appended after the element, OR a computed expression via `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), and/or `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (render as a usage bar — `expr` = used, `max` = total). |
 
 #### Notes on the subtle fields
 

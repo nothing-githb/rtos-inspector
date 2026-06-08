@@ -2,6 +2,17 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.26.0] - 2026-06-08
+
+### Added
+- **Computed field expressions.** A field's `expr` (and a `bar`'s `max`) may now
+  reference the element via **`${expr}`** (raw) / **`${wrapped_expr}`** (after
+  `cast`/`wrap`) — the same placeholders as `wrap` / `next`. This enables
+  arithmetic across **two members**, e.g. free stack as
+  `"${expr}->stack_size - ${expr}->stack_used"`. Without a placeholder, `expr` is
+  still appended after the element exactly as before. The demo's `threads` tab
+  adds a computed **Free** column.
+
 ## [0.25.3] - 2026-06-08
 
 ### Fixed
