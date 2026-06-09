@@ -12,7 +12,7 @@
     ]
   },
 
-  "//threads": "processes altında ağaç. 'Stack' = stack_used/stack_size kullanım çubuğu. 'Free' = ${expr} ile iki üyeli aritmetik (stack_size - stack_used).",
+  "//threads": "processes altında ağaç. 'State' config-driven rozet renkleri (badge: değer->renk). 'Stack' = stack_used/stack_size kullanım çubuğu. 'Free' = ${expr} ile iki üyeli aritmetik.",
   "threads": {
     "groupBy": "processes",
     "mode": "linked_list",
@@ -21,7 +21,7 @@
     "fields": [
       { "label": "ID",    "expr": "id" },
       { "label": "Name",  "expr": "name" },
-      { "label": "State", "expr": "state" },
+      { "label": "State", "expr": "state", "badge": { "RUNNING": "green", "READY": "cyan", "BLOCKED": "red", "WAITING": "amber" } },
       { "label": "Stack", "expr": "stack_used", "bar": { "max": "stack_size", "warn": 75, "crit": 90 } },
       { "label": "Free",  "expr": "${expr}->stack_size - ${expr}->stack_used" }
     ]

@@ -40,7 +40,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   and reorder by **dragging a tab** (or a row in the menu) — instant (client-side),
   remembered per workspace. A section can also start hidden with `"hidden": true`
   in config.
-- **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING), plus a summary line per tab. Changed cells light up amber.
+- **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING — or your own value→color map via a field's `"badge"`), plus a summary line per tab. Changed cells light up amber.
 - **Read-only by default (optional editing).** Debug Inspector only *reads* your data — it never calls functions. A field can opt into editing with `"editable": true`; then right-click → **Edit value…** writes it with GDB `set var`. Right-click any cell also offers **Copy cell**.
 - **Leveled, color-coded logging.** A *Debug Inspector* Output channel (rendered with the `log` syntax so timestamps/severities/values are colorized); pick `off` / `info` / `debug`.
 
@@ -79,7 +79,7 @@ The config file (default `debug-inspector.json`) is a JSON object that is a **ma
 | `groupBy` | grouping sections           | Names a master section; renders this section as a collapsible tree, one group per master element (use `${master}` in `root`/`head`/`count`/`nil`). |
 | `hidden`  | all                         | `true` starts this section's tab hidden (until shown from the ▤ Sections menu). Ignored once you change section visibility in the UI. |
 | `max`     | all                         | Traversal upper bound / safety guard (default `1024`). |
-| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). `expr` is appended after the element, OR a computed expression via `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (usage bar), and/or `"link": { "section": "<target>", "match": "<column>" }` (clickable cross-reference), and/or `"when": "<bool expr>"` (conditional field — blank when false; several on one discriminator = variant/tagged‑union), `"editable": true` (right‑click → Edit value writes via GDB `set var`), and/or `"wrap": "<tmpl>"` (transform the field value *after* access — `${expr}` = the accessed value). |
+| `fields`  | all *(required)*            | Ordered list of `{ "label", "expr" }` columns (first column = row identity). `expr` is appended after the element, OR a computed expression via `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed/unfetched), `"base": "dec"\|"hex"\|"bin"` (default number base), `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (usage bar), and/or `"link": { "section": "<target>", "match": "<column>" }` (clickable cross-reference), and/or `"when": "<bool expr>"` (conditional field — blank when false; several on one discriminator = variant/tagged‑union), `"editable": true` (right‑click → Edit value writes via GDB `set var`), `"wrap": "<tmpl>"` (transform the field value *after* access — `${expr}` = the accessed value), and/or `"badge": { "<value>": "<color>" }` (value→color badge, overriding the built-in `State` coloring). |
 
 #### Notes on the subtle fields
 
@@ -303,6 +303,12 @@ Any `fields` entry can carry extra options beyond `label`/`expr`. One example ea
 
 ```json
 { "label": "X", "expr": "data", "wrap": "((widget_t *)${expr})->x" }
+```
+
+**Badge colors** (`badge`) — map values to colored badges (case‑insensitive exact match), overriding the built‑in `State` coloring. Color names `green` / `blue` / `red` / `amber` / `orange` / `purple` / `cyan` / `gray`, or a `#rrggbb` hex. Works for numeric states too:
+
+```json
+{ "label": "State", "expr": "state", "badge": { "RUNNING": "green", "READY": "cyan", "BLOCKED": "red", "WAITING": "amber" } }
 ```
 
 ### Notes on `expr` and rendering

@@ -12,6 +12,7 @@ interface FieldCfg {
   when?: string;  // koşullu alan: eleman üzerinde GDB bool ifadesi; yanlışsa hücre boş kalır (değer çekilmez). ${expr}/${wrapped_expr} kullanılabilir. Variant/tagged-union: aynı discriminator'a bağlı birkaç 'when'li alan.
   editable?: boolean;  // sağ-tık 'Edit value' ile düzenlenebilir (GDB 'set var' ile debuggee'ye YAZAR). Sadece atanabilir (L-value) ifadeler; aksi halde GDB hata verir.
   wrap?: string;  // alana ERİŞTİKTEN SONRA değeri dönüştür; ${expr} = erişilen alan değeri. Örn expr "data" + wrap "((widget_t *)${expr})->x" -> ((widget_t *)(elem.data))->x. Sonuç hücreye yazılır.
+  badge?: Record<string, string>;  // değer -> renk rozet eşlemesi (case-insensitive tam eşleşme); renk adı (green/blue/red/amber/purple/cyan/gray) veya #rrggbb. Verilirse built-in State/Discipline heuristic'i yerine bu kullanılır.
 }
 interface SectionCfg {
   mode: 'linked_list' | 'array' | 'index_list';
@@ -38,6 +39,7 @@ interface Section {
   bases?: Record<string, string>;   // kolon -> config sayı tabanı (dec/hex/bin)
   bars?: Record<string, { warn: number; crit: number }>;   // kolon -> kullanım çubuğu eşikleri (max değeri row['__bar__'+kolon]'da)
   links?: Record<string, { section: string; match?: string }>;   // kolon -> çapraz-referans hedefi (section + match kolonu)
+  badges?: Record<string, Record<string, string>>;   // kolon -> değer->renk rozet eşlemesi
   needsSelection?: boolean;   // gruplu bölüm: master bölüm boş/bulunamadı
   grouped?: boolean;          // groupBy ile ağaç olarak gruplanmış
   groups?: Group[];           // her master elemanı için bir grup
@@ -560,6 +562,12 @@ function fieldLinks(fields: FieldCfg[]): Record<string, { section: string; match
   for (const f of fields) if (f.link && f.link.section) m[f.label] = { section: f.link.section, match: f.link.match };
   return m;
 }
+// Kolon -> değer->renk rozet eşlemesi (field.badge verilmişse)
+function fieldBadges(fields: FieldCfg[]): Record<string, Record<string, string>> {
+  const m: Record<string, Record<string, string>> = {};
+  for (const f of fields) if (f.badge && typeof f.badge === 'object') m[f.label] = f.badge;
+  return m;
+}
 
 // Yalnız AKTİF sütunları gdb'den çek (pasif sütunlar için print çalıştırılmaz)
 async function buildSection(
@@ -575,7 +583,7 @@ async function buildSection(
     .filter((f): f is FieldCfg => !!f);
   const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor, name);
   log?.debug(`section "${name}" (${cfg.mode}, root=${cfg.root}): ${rows.length} row(s); active=[${eff.active.join(', ')}]`);
-  return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields) };
+  return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields), badges: fieldBadges(cfg.fields) };
 }
 
 // ---------------------------------------------------------------------------
@@ -655,7 +663,7 @@ async function buildGrouped(
   }
   const total = groups.reduce((a, g) => a + g.rows.length, 0);
   log?.debug(`grouped "${name}" by ${scfg.groupBy}: ${groups.length} group(s), ${total} row(s)`);
-  return { name, columnsAll: eff.order, hidden: eff.hidden, rows: [], summary: `${total} ${name} · ${groups.length} ${scfg.groupBy}`, grouped: true, groups, bases: fieldBases(scfg.fields), bars: fieldBars(scfg.fields), links: fieldLinks(scfg.fields) };
+  return { name, columnsAll: eff.order, hidden: eff.hidden, rows: [], summary: `${total} ${name} · ${groups.length} ${scfg.groupBy}`, grouped: true, groups, bases: fieldBases(scfg.fields), bars: fieldBars(scfg.fields), links: fieldLinks(scfg.fields), badges: fieldBadges(scfg.fields) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,6 +1159,20 @@ function getHtml(): string {
     if (s.includes('wait'))  return 's-wait';
     return '';
   }
+  // config-driven rozet: değer -> renk (field.badge)
+  var BADGE_COLORS = { green:'#2ecc71', blue:'#3498db', red:'#e74c3c', amber:'#f1c40f', yellow:'#f1c40f', orange:'#e67e22', purple:'#b07cc6', cyan:'#1abc9c', gray:'#9aa0a6', grey:'#9aa0a6' };
+  function badgeHex(name) {
+    if (!name) return null;
+    var k = String(name).toLowerCase();
+    if (BADGE_COLORS[k]) return BADGE_COLORS[k];
+    return /^#[0-9a-fA-F]{6}$/.test(name) ? name : null;
+  }
+  function matchBadge(map, val) {
+    if (!map) return null;
+    var v = String(val).trim().toLowerCase();
+    for (var k in map) { if (String(k).trim().toLowerCase() === v) return map[k]; }
+    return null;
+  }
   function asNum(v){ const m=String(v).match(/-?\\d+/); return m?parseInt(m[0],10):NaN; }
 
   // Erişilemeyen (gdb hata/erişim yok) veya NULL pointer (0x0) -> "-"
@@ -1355,6 +1377,7 @@ function getHtml(): string {
     const colBase = opts.colBase || {};
     const bars = opts.bars || {};
     const links = opts.links || {};
+    const badges = opts.badges || {};
     const sortCol = opts.sortCol;
     const rk = rowKeyOf(row, columns);
     let h = '<tr>';
@@ -1378,9 +1401,15 @@ function getHtml(): string {
       if (isSort) classes.push('sortcol');
       const clsAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
       const lk = links[c];
-      let inner = (lk && raw !== '' && !isDash(raw) && linkHasTarget(lk, raw))
-        ? '<a class="xref" data-sec="' + esc(lk.section) + '" data-match="' + esc(lk.match || '') + '" data-val="' + esc(raw) + '">' + esc(disp) + '</a>'
-        : cell(c, disp);
+      let inner;
+      if (lk && raw !== '' && !isDash(raw) && linkHasTarget(lk, raw)) {
+        inner = '<a class="xref" data-sec="' + esc(lk.section) + '" data-match="' + esc(lk.match || '') + '" data-val="' + esc(raw) + '">' + esc(disp) + '</a>';
+      } else {
+        const bhex = (!isDash(raw)) ? badgeHex(matchBadge(badges[c], raw)) : null;   // config-driven rozet
+        inner = bhex
+          ? '<span class="badge" style="background:' + bhex + '30;color:' + bhex + '">' + esc(disp) + '</span>'
+          : cell(c, disp);
+      }
       if (isChg) {
         const ov = isDash(changed[ck]) ? '-' : changed[ck];
         inner += '<span class="old" title="previous value">' + esc(ov) + '</span>';
@@ -1433,7 +1462,7 @@ function getHtml(): string {
     const allRows = grouped ? st.sec.groups.reduce((a, g) => a.concat(g.rows), []) : st.sec.rows;
     const numCols = numericCols(cols, allRows);
     st.numCols = numCols;   // ▦ Columns menüsü per-kolon base düğmesi için kullanır
-    const opts = { numCols: numCols, colBase: st.colBase || {}, bars: st.sec.bars || {}, links: st.sec.links || {}, sortCol: st.sortCol };
+    const opts = { numCols: numCols, colBase: st.colBase || {}, bars: st.sec.bars || {}, links: st.sec.links || {}, badges: st.sec.badges || {}, sortCol: st.sortCol };
     const summary = '<div class="summary">' + esc(st.sec.summary) + '</div>';
     const bar = toolbarHtml(st);
     let table;

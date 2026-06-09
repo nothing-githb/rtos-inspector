@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.35.0] - 2026-06-09
+
+### Added
+- **Config-driven badge colors (`badge`).** A field can map values to colored
+  badges — `{ "RUNNING": "green", "BLOCKED": "red", "2": "amber", … }` — using color
+  names (`green`/`blue`/`red`/`amber`/`orange`/`purple`/`cyan`/`gray`) or a
+  `#rrggbb` hex (case‑insensitive exact match). This overrides the built‑in `State`
+  coloring and works for custom or **numeric** states. The demo's `threads` `State`
+  uses it (READY shown cyan).
+
 ## [0.34.1] - 2026-06-09
 
 ### Changed
