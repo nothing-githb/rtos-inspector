@@ -2,7 +2,7 @@
 
 **Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.**
 
-Debug Inspector turns the structures *you* describe into clean, tabbed, sortable tables that refresh every time your GDB (`cppdbg`) session stops. Point it at any global expression — a thread-control-block list, a semaphore pool, a ready/blocked queue, a timer array, an intrusive free-list, or any node list — and it walks that structure and renders it for you, no more manually expanding nodes in the debugger. What appears is driven entirely by a small `rtos-inspector.json` file you write, so the extension knows nothing about your types and works with **any** C/C++ codebase: bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at embedded / RTOS developers inspecting their own kernels, but it is just as useful to any C/C++ developer who wants a live view of a struct collection. It is strictly **read-only** for your program: it never calls functions and never writes your memory — the only `set` commands it issues target dedicated GDB convenience variables (`$ri_*` / `$rg_*`) used as traversal cursors.
+Debug Inspector turns the structures *you* describe into clean, tabbed, sortable tables that refresh every time your GDB (`cppdbg`) session stops. Point it at any global expression — a thread-control-block list, a semaphore pool, a ready/blocked queue, a timer array, an intrusive free-list, or any node list — and it walks that structure and renders it for you, no more manually expanding nodes in the debugger. What appears is driven entirely by a small `debug-inspector.json` file you write, so the extension knows nothing about your types and works with **any** C/C++ codebase: bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at embedded / RTOS developers inspecting their own kernels, but it is just as useful to any C/C++ developer who wants a live view of a struct collection. It is strictly **read-only** for your program: it never calls functions and never writes your memory — the only `set` commands it issues target dedicated GDB convenience variables (`$ri_*` / `$rg_*`) used as traversal cursors.
 
 ![Debug Inspector panel](https://raw.githubusercontent.com/nothing-githb/rtos-inspector/master/extension/images/panel.png)
 
@@ -52,7 +52,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 ## Quick start
 
 1. Debug your C/C++ program with `cppdbg` (GDB).
-2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
+2. Put a `debug-inspector.json` at your workspace root (see the schema below).
 3. Run **“Debug Inspector: Open Panel”** from the Command Palette (it opens beside your editor).
 4. When you hit a breakpoint the panel fills in; on `continue` it shows `running…`, then refreshes again on the next stop. Each config section gets its own tab.
 
@@ -60,7 +60,7 @@ Run **“Debug Inspector: Show Log”** any time to open the Output channel for 
 
 ## Configuration
 
-The config file (default `rtos-inspector.json`) is a JSON object that is a **map of named sections**. Each key whose value is an object with a string `mode` and an array `fields` is treated as a section; the **JSON key is the tab label** (`threads`, `semaphores`, `pool`, … — any name). Add **one section per data structure**, as many as you like; section order in the file drives tab order. Keys beginning with `//` are skipped, so you can use them for inline comments.
+The config file (default `debug-inspector.json`) is a JSON object that is a **map of named sections**. Each key whose value is an object with a string `mode` and an array `fields` is treated as a section; the **JSON key is the tab label** (`threads`, `semaphores`, `pool`, … — any name). Add **one section per data structure**, as many as you like; section order in the file drives tab order. Keys beginning with `//` are skipped, so you can use them for inline comments.
 
 ### Schema — every field
 
@@ -313,13 +313,13 @@ You never declare types or sizes. Whatever `expr` evaluates to is formatted by G
 
 | Setting                      | Default                | Description |
 |------------------------------|------------------------|-------------|
-| `rtosInspector.configPath`   | `rtos-inspector.json`  | Path to the config file. Absolute paths are used as-is (work even with no workspace folder); a relative path is resolved against the workspace root. |
-| `rtosInspector.logLevel`     | `info`                 | Verbosity of the *Debug Inspector* Output channel: `off` / `info` / `debug`. |
-| `rtosInspector.debugTypes`   | `["cppdbg"]`           | Debug adapter types the tracker attaches to. Use `cppdbg` for GDB. |
+| `debugInspector.configPath`   | `debug-inspector.json`  | Path to the config file. Absolute paths are used as-is (work even with no workspace folder); a relative path is resolved against the workspace root. |
+| `debugInspector.logLevel`     | `info`                 | Verbosity of the *Debug Inspector* Output channel: `off` / `info` / `debug`. |
+| `debugInspector.debugTypes`   | `["cppdbg"]`           | Debug adapter types the tracker attaches to. Use `cppdbg` for GDB. |
 
 ## Logging & troubleshooting
 
-Open the channel with **“Debug Inspector: Show Log”**. It uses VS Code's `log` language id, so the theme color-codes timestamps, severities, and values. Pick the level with `rtosInspector.logLevel` (applied live):
+Open the channel with **“Debug Inspector: Show Log”**. It uses VS Code's `log` language id, so the theme color-codes timestamps, severities, and values. Pick the level with `debugInspector.logLevel` (applied live):
 
 - **`off`** — no logging.
 - **`info`** *(default)* — general milestones plus warnings/errors: activate, refresh, selection, and GDB access failures.

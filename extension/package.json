@@ -1,8 +1,8 @@
 {
-  "name": "rtos-inspector",
+  "name": "debug-inspector",
   "displayName": "Debug Inspector",
   "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "publisher": "halistahasahin",
   "license": "MIT",
   "icon": "icon.png",
@@ -66,23 +66,23 @@
   "contributes": {
     "commands": [
       {
-        "command": "rtosInspector.open",
+        "command": "debugInspector.open",
         "title": "Debug Inspector: Open Panel"
       },
       {
-        "command": "rtosInspector.showLog",
+        "command": "debugInspector.showLog",
         "title": "Debug Inspector: Show Log"
       }
     ],
     "configuration": {
       "title": "Debug Inspector",
       "properties": {
-        "rtosInspector.configPath": {
+        "debugInspector.configPath": {
           "type": "string",
-          "default": "rtos-inspector.json",
+          "default": "debug-inspector.json",
           "description": "Path to the config file. Absolute paths are used as-is; a relative path is resolved against the workspace root."
         },
-        "rtosInspector.logLevel": {
+        "debugInspector.logLevel": {
           "type": "string",
           "enum": [
             "off",
@@ -97,7 +97,7 @@
           ],
           "description": "Verbosity of the Debug Inspector Output channel (\"Debug Inspector: Show Log\")."
         },
-        "rtosInspector.debugTypes": {
+        "debugInspector.debugTypes": {
           "type": "array",
           "items": {
             "type": "string"

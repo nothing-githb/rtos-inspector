@@ -2,6 +2,22 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.34.0] - 2026-06-09
+
+### Changed (renamed to the "Debug Inspector" name)
+
+The display name was already **Debug Inspector**; the remaining `rtos-inspector` /
+`rtosInspector` identifiers are now renamed to match:
+
+- Extension id: **`debug-inspector`** (was `rtos-inspector`).
+- Commands and settings namespace: **`debugInspector.*`** (was `rtosInspector.*`)
+  — `debugInspector.configPath` / `debugInspector.logLevel` / `debugInspector.debugTypes`.
+- Default config file: **`debug-inspector.json`** (was `rtos-inspector.json`).
+
+**Migration:** rename your config file to `debug-inspector.json` (or point
+`debugInspector.configPath` at it) and update any `rtosInspector.*` keys in your
+`settings.json` to `debugInspector.*`. The GitHub repository URL is unchanged.
+
 ## [0.33.0] - 2026-06-09
 
 ### Changed

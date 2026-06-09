@@ -19,7 +19,7 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 ### See it in 20 seconds
 
 1. Debug a C/C++ program with GDB (`type: cppdbg`).
-2. Drop a `rtos-inspector.json` at your workspace root naming one section per
+2. Drop a `debug-inspector.json` at your workspace root naming one section per
    structure (e.g. a `linked_list` rooted at `g_thread_list`).
 3. Run **"Debug Inspector: Open Panel"**.
 4. Hit a breakpoint — every section appears as its own sortable table tab, and
@@ -105,15 +105,15 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 ## Install
 
 - **From the Marketplace:** search for **Debug Inspector**, or open
-  [the listing](https://marketplace.visualstudio.com/items?itemName=halistahasahin.rtos-inspector)
-  (`itemName=halistahasahin.rtos-inspector`).
-- **From a packaged build:** `code --install-extension dist/rtos-inspector-<version>.vsix`
+  [the listing](https://marketplace.visualstudio.com/items?itemName=halistahasahin.debug-inspector)
+  (`itemName=halistahasahin.debug-inspector`).
+- **From a packaged build:** `code --install-extension dist/debug-inspector-<version>.vsix`
   (or in VS Code: Extensions → ⋯ → *Install from VSIX…*).
 
 ## Quick start
 
 1. Debug your C/C++ program with `cppdbg` (GDB).
-2. Put a `rtos-inspector.json` at your workspace root (see the schema below).
+2. Put a `debug-inspector.json` at your workspace root (see the schema below).
 3. Run **"Debug Inspector: Open Panel"** from the Command Palette.
 4. When you hit a breakpoint the panel fills in; on *continue* it shows
    `running…` and refreshes again on the next stop.
@@ -139,7 +139,7 @@ nothing.
 
 ## Configuration
 
-The config file (default `rtos-inspector.json`) is a **JSON map of named
+The config file (default `debug-inspector.json`) is a **JSON map of named
 sections**. Each key whose value is an object with a string `mode` and an array
 `fields` is a section; the key is its tab label. **Keys starting with `//` are
 ignored** (handy for inline notes). Section order is preserved and drives tab
@@ -460,15 +460,15 @@ Any `fields` entry can carry these — one example each:
 
 | Setting                     | Default                 | Description |
 |-----------------------------|-------------------------|-------------|
-| `rtosInspector.configPath`  | `rtos-inspector.json`   | Path to the config file. **Absolute paths are used as-is** (work even with no workspace folder); a **relative path resolves against the workspace root**. Changing it re-creates the file watcher. |
-| `rtosInspector.logLevel`    | `info`                  | Output channel verbosity: `off` / `info` / `debug`. Applied live on change. |
-| `rtosInspector.debugTypes`  | `["cppdbg"]`            | Debug adapter types the tracker attaches to. Use `cppdbg` for GDB. |
+| `debugInspector.configPath`  | `debug-inspector.json`   | Path to the config file. **Absolute paths are used as-is** (work even with no workspace folder); a **relative path resolves against the workspace root**. Changing it re-creates the file watcher. |
+| `debugInspector.logLevel`    | `info`                  | Output channel verbosity: `off` / `info` / `debug`. Applied live on change. |
+| `debugInspector.debugTypes`  | `["cppdbg"]`            | Debug adapter types the tracker attaches to. Use `cppdbg` for GDB. |
 
 ## Commands
 
-- **Debug Inspector: Open Panel** (`rtosInspector.open`) — open or reveal the
+- **Debug Inspector: Open Panel** (`debugInspector.open`) — open or reveal the
   panel; if the debugger is already stopped, it refreshes immediately.
-- **Debug Inspector: Show Log** (`rtosInspector.showLog`) — reveal the
+- **Debug Inspector: Show Log** (`debugInspector.showLog`) — reveal the
   *Debug Inspector* Output channel.
 
 ## Troubleshooting & logging
@@ -477,7 +477,7 @@ Open **View → Output → "Debug Inspector"** (or run **"Debug Inspector: Show 
 to see what the extension is doing. The channel uses the built-in `log` language
 id so the theme color-codes timestamps, severities, and values; each line is
 `YYYY-MM-DD HH:MM:SS.mmm [LEVEL] message`. Set the level with
-**`rtosInspector.logLevel`**:
+**`debugInspector.logLevel`**:
 
 - **`off`** — no logging.
 - **`info`** (default) — milestones (activate, refresh, selection) **plus**
@@ -521,7 +521,7 @@ Extension Development Host.
 Open `test-workspace/` as a folder. It contains `threads_demo.c` — a tiny demo
 with **two processes** (`init`, `worker`), each owning its own semaphore list,
 plus an independent timer array and several `void*`/index examples. The matching
-`rtos-inspector.json` shows a `processes` list and **grouping** (`semaphores` and
+`debug-inspector.json` shows a `processes` list and **grouping** (`semaphores` and
 `procSlots` grouped under `processes` via `${master}`), an `array` timer tab, and
 `cast` / `wrap` / `index_list` examples (`widgets`, `slots`, `boxes`, `pool` — the
 latter with a default-hidden `Next` column). Everything fills in on each stop;

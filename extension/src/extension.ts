@@ -50,13 +50,13 @@ interface ColPref { order: string[]; hidden: string[]; }
 let panel: vscode.WebviewPanel | undefined;
 let lastStopped: { session: vscode.DebugSession; threadId: number; frameId?: number } | undefined;
 let printSetupFor: vscode.DebugSession | undefined;   // #3: kompakt print ayarları bu oturumda yapıldı mı
-// Output: config-driven seviyeli logger (rtosInspector.logLevel)
+// Output: config-driven seviyeli logger (debugInspector.logLevel)
 // Seçilebilir seviyeler: off / info / debug. trace -> debug tier, warn/error -> info tier.
 const LOG_LEVELS: Record<string, number> = { debug: 20, trace: 20, info: 30, warn: 30, error: 30, off: 100 };
 let logChannel: vscode.OutputChannel | undefined;
 let logThreshold = LOG_LEVELS.info;
 function readLogLevel(): number {
-  const v = String(vscode.workspace.getConfiguration('rtosInspector').get('logLevel') ?? 'info').toLowerCase();
+  const v = String(vscode.workspace.getConfiguration('debugInspector').get('logLevel') ?? 'info').toLowerCase();
   return LOG_LEVELS[v] ?? LOG_LEVELS.info;
 }
 function emit(sev: number, tag: string, msg: string) {
@@ -79,11 +79,11 @@ const log = {
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let extContext: vscode.ExtensionContext | undefined;
 let columnPrefs: Record<string, ColPref> = {};
-const COLPREF_KEY = 'rtosInspector.columnPrefs';
+const COLPREF_KEY = 'debugInspector.columnPrefs';
 let sectionPrefs: { order: string[]; hidden: string[]; touched?: boolean } = { order: [], hidden: [] };  // sekme sırası + gizli sekmeler; touched=kullanıcı seçim yaptı (config hidden artık yoksayılır)
-const SECPREF_KEY = 'rtosInspector.sectionPrefs';
+const SECPREF_KEY = 'debugInspector.sectionPrefs';
 let paused = false;                         // duraklatılınca durakta otomatik yenileme yapılmaz
-const PAUSED_KEY = 'rtosInspector.paused';
+const PAUSED_KEY = 'debugInspector.paused';
 
 // ---------------------------------------------------------------------------
 // Aktivasyon
@@ -97,19 +97,19 @@ export function activate(context: vscode.ExtensionContext) {
   logChannel = vscode.window.createOutputChannel('Debug Inspector', 'log'); // 'log' dili = renkli
   logThreshold = readLogLevel();
   context.subscriptions.push(logChannel);
-  log.info(`Debug Inspector activated (log level: ${vscode.workspace.getConfiguration('rtosInspector').get('logLevel') ?? 'info'})`);
+  log.info(`Debug Inspector activated (log level: ${vscode.workspace.getConfiguration('debugInspector').get('logLevel') ?? 'info'})`);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('rtosInspector.open', () => {
+    vscode.commands.registerCommand('debugInspector.open', () => {
       log.debug('command: open panel');
       openPanel(context);
       if (lastStopped) refresh(lastStopped.session, lastStopped.threadId);
     }),
-    vscode.commands.registerCommand('rtosInspector.showLog', () => log.show())
+    vscode.commands.registerCommand('debugInspector.showLog', () => log.show())
   );
 
   const types: string[] =
-    vscode.workspace.getConfiguration('rtosInspector').get('debugTypes') ?? ['cppdbg'];
+    vscode.workspace.getConfiguration('debugInspector').get('debugTypes') ?? ['cppdbg'];
 
   for (const type of types) {
     context.subscriptions.push(
@@ -139,10 +139,10 @@ export function activate(context: vscode.ExtensionContext) {
   setupConfigWatcher(context);
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('rtosInspector.configPath')) setupConfigWatcher(context);
-      if (e.affectsConfiguration('rtosInspector.logLevel')) {
+      if (e.affectsConfiguration('debugInspector.configPath')) setupConfigWatcher(context);
+      if (e.affectsConfiguration('debugInspector.logLevel')) {
         logThreshold = readLogLevel();
-        log.info(`log level changed: ${vscode.workspace.getConfiguration('rtosInspector').get('logLevel') ?? 'info'}`);
+        log.info(`log level changed: ${vscode.workspace.getConfiguration('debugInspector').get('logLevel') ?? 'info'}`);
       }
     })
   );
@@ -154,7 +154,7 @@ export function deactivate() {}
 function setupConfigWatcher(context: vscode.ExtensionContext) {
   configWatcher?.dispose();
   const rel: string =
-    vscode.workspace.getConfiguration('rtosInspector').get('configPath') ?? 'rtos-inspector.json';
+    vscode.workspace.getConfiguration('debugInspector').get('configPath') ?? 'debug-inspector.json';
   let pattern: vscode.RelativePattern;
   if (path.isAbsolute(rel)) {
     pattern = new vscode.RelativePattern(vscode.Uri.file(path.dirname(rel)), path.basename(rel));
@@ -352,7 +352,7 @@ async function collectRowFields(
 // configPath mutlaksa doğrudan; göreliyse workspace köküne göre çözülür
 function configFilePath(): string | undefined {
   const rel: string =
-    vscode.workspace.getConfiguration('rtosInspector').get('configPath') ?? 'rtos-inspector.json';
+    vscode.workspace.getConfiguration('debugInspector').get('configPath') ?? 'debug-inspector.json';
   if (path.isAbsolute(rel)) return rel;
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return undefined;
@@ -735,7 +735,7 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
 function openPanel(context: vscode.ExtensionContext) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside); return; }
   panel = vscode.window.createWebviewPanel(
-    'rtosInspector', 'Debug Inspector', vscode.ViewColumn.Beside,
+    'debugInspector', 'Debug Inspector', vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true }
   );
   panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
