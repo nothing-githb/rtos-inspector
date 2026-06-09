@@ -20,3 +20,6 @@ test-workspace/*.o
 # See test-workspace/.vscode/*.example.json for portable templates.
 test-workspace/.vscode/launch.json
 test-workspace/.vscode/tasks.json
+
+# Export output from the panel's "Export JSON" button
+debug-inspector-export.json
