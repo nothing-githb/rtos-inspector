@@ -798,6 +798,15 @@ function openPanel(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage(`Debug Inspector: edit failed — ${res}`);
         }
         doRefresh();
+      } else if (msg?.type === 'export' && typeof msg.json === 'string') {
+        // tüm görünür bölümlerin verisini JSON dosyasına dışa aktar
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        const def = folder ? vscode.Uri.joinPath(folder.uri, 'debug-inspector-export.json') : vscode.Uri.file('debug-inspector-export.json');
+        const uri = await vscode.window.showSaveDialog({ defaultUri: def, filters: { JSON: ['json'] }, saveLabel: 'Export' });
+        if (!uri) return;
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.json, 'utf8'));
+        log?.info(`exported sections to ${uri.fsPath} (${msg.json.length} chars)`);
+        vscode.window.showInformationMessage(`Debug Inspector: exported to ${uri.fsPath}`);
       }
     },
     null,
@@ -1015,6 +1024,7 @@ function getHtml(): string {
     <span class="grow"></span>
     <span id="ts" class="ts"></span>
     <button id="sections-btn" class="btn" title="Show / hide sections (tabs)">▤ Sections</button>
+    <button id="export-btn" class="btn" title="Export all sections' data as JSON">⤓ JSON</button>
     <button id="pause" class="btn" title="Pause/resume auto-refresh on each stop">⏸ Pause</button>
     <button id="refresh" class="btn" title="Re-read config and refresh now">⟳ Refresh</button>
   </div>
@@ -1861,6 +1871,27 @@ function getHtml(): string {
     }
   });
   secMenu.addEventListener('click', e => e.stopPropagation());
+
+  // --- Export: tüm görünür bölümlerin verisini JSON olarak dışa aktar ---
+  function buildExport() {
+    const out = {};
+    for (const name of currentNames) {
+      const st = secState[name]; if (!st || !st.sec) continue;
+      const cols = (st.order || []).filter(l => st.hidden.indexOf(l) === -1);
+      const rowObj = r => { const o = {}; for (const c of cols) o[c] = (r[c] !== undefined && r[c] !== '' ? r[c] : null); return o; };
+      if (st.sec.grouped) {
+        out[name] = (st.sec.groups || []).map(g => ({ group: g.label, rows: (g.rows || []).map(rowObj) }));
+      } else {
+        out[name] = (st.sec.rows || []).map(rowObj);
+      }
+    }
+    return JSON.stringify(out, null, 2);
+  }
+  const exportBtn = document.getElementById('export-btn');
+  if (exportBtn) exportBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    vscodeApi.postMessage({ type: 'export', json: buildExport() });
+  });
   secMenu.addEventListener('change', e => {
     const cb = e.target.closest('input[data-act="secvis"]');
     if (!cb) return;

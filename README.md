@@ -67,8 +67,9 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 - **Filter & changed-only** — a per-tab filter box narrows rows as you type
   (focus-preserving); a **Changed** toggle shows only rows that moved since the
   last stop.
-- **Copy out** — copy the (filtered) table as **CSV** or **Markdown** with one
-  click (grouped tables add a `Group` column).
+- **Copy out & export** — copy the (filtered) table as **CSV** or **Markdown** with
+  one click (grouped tables add a `Group` column), or **⤓ JSON** in the top bar to
+  export every section's data to a JSON file.
 - **Per-column number base** — show any numeric column as **dec / hex / bin** via
   a click-to-cycle base button in the column header's top-right
   (`raw`→`bin`→`dec`→`hex`), or set a default in config with a field's `"base"`. Numeric columns are

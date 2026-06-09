@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.36.0] - 2026-06-09
+
+### Added
+- **Export all data as JSON.** A new **⤓ JSON** button in the top bar (next to
+  ▤ Sections) exports every visible section's rows to a JSON file via a save
+  dialog — grouped sections are nested by group. Per‑tab Copy CSV / Copy MD remain.
+
 ## [0.35.0] - 2026-06-09
 
 ### Added
