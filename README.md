@@ -12,6 +12,10 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
 
 > Repository: https://github.com/nothing-githb/rtos-inspector
 
+![Debug Inspector panel](extension/images/panel.png)
+
+*Representative panel — per-process threads with `State` badges, stack‑usage bars, an `Owner` cross‑reference link, change highlighting, and per‑column number‑base / sort controls.*
+
 ### See it in 20 seconds
 
 1. Debug a C/C++ program with GDB (`type: cppdbg`).
@@ -423,6 +427,34 @@ default to 75 / 90. The field's own `expr` is the *used* value.
 
 This shows each thread's stack usage as `stack_used / stack_size`. Shorthand:
 `"bar": "stack_size"` (default thresholds).
+
+### Other per-column field options
+
+Any `fields` entry can carry these — one example each:
+
+```jsonc
+// Computed value: ${expr} (raw) / ${wrapped_expr} (after cast/wrap) — arithmetic, casts, ternaries
+{ "label": "Free", "expr": "${expr}->stack_size - ${expr}->stack_used" }
+
+// Number base: dec / hex / bin default (also a 10/16/2 toggle in the column header)
+{ "label": "Handle", "expr": "id", "base": "hex" }
+
+// Cross-reference link: click jumps to the matching row in another section (only if a match exists)
+{ "label": "Owner", "expr": "owner", "link": { "section": "threads", "match": "ID" } }
+
+// Conditional / tagged-union: show only when true; several on one discriminator = variant rows
+{ "label": "Owner",   "expr": "owner",   "when": "locked" },
+{ "label": "Waiting", "expr": "waiters", "when": "${expr}.locked == 0" }
+
+// Editable: right-click -> Edit value writes via GDB `set var` (assignable fields only)
+{ "label": "Locked", "expr": "locked", "editable": true }
+
+// Hidden by default: start collapsed + unfetched; enable from the ▦ Columns menu
+{ "label": "Next", "expr": "next", "hidden": true }
+
+// Field wrap: transform the value AFTER access (${expr} = the accessed value)
+{ "label": "X", "expr": "data", "wrap": "((widget_t *)${expr})->x" }
+```
 
 ## Settings
 

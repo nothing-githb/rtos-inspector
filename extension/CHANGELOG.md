@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.33.0] - 2026-06-09
+
+### Changed
+- **Docs & discoverability.** The README now covers every feature and gives a
+  JSON example for each per‑column option (computed `${expr}`, `base`, `bar`,
+  `link`, `when`, `editable`, `hidden`, field `wrap`), and shows a representative
+  panel image. Expanded Marketplace keywords (freertos / zephyr / threadx /
+  microcontroller / firmware / inspector / …). No functional change.
+
 ## [0.32.1] - 2026-06-09
 
 ### Fixed

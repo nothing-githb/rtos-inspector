@@ -4,6 +4,10 @@
 
 Debug Inspector turns the structures *you* describe into clean, tabbed, sortable tables that refresh every time your GDB (`cppdbg`) session stops. Point it at any global expression — a thread-control-block list, a semaphore pool, a ready/blocked queue, a timer array, an intrusive free-list, or any node list — and it walks that structure and renders it for you, no more manually expanding nodes in the debugger. What appears is driven entirely by a small `rtos-inspector.json` file you write, so the extension knows nothing about your types and works with **any** C/C++ codebase: bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at embedded / RTOS developers inspecting their own kernels, but it is just as useful to any C/C++ developer who wants a live view of a struct collection. It is strictly **read-only** for your program: it never calls functions and never writes your memory — the only `set` commands it issues target dedicated GDB convenience variables (`$ri_*` / `$rg_*`) used as traversal cursors.
 
+![Debug Inspector panel](https://raw.githubusercontent.com/nothing-githb/rtos-inspector/master/extension/images/panel.png)
+
+*Representative panel — per-process threads with `State` badges, stack‑usage bars, an `Owner` cross‑reference link, change highlighting, and per‑column number‑base / sort controls.*
+
 ## Features
 
 - **Config-driven, zero code changes.** Describe each structure in JSON; the extension assumes no layout and needs no instrumentation in your program.
@@ -248,9 +252,62 @@ Each slot of `box_t g_boxes[3]` is `{ void *data; int kind }` and `data` holds a
 }
 ```
 
+### Per-column field options (with examples)
+
+Any `fields` entry can carry extra options beyond `label`/`expr`. One example each:
+
+**Computed value** — reference the element with `${expr}` (raw) / `${wrapped_expr}` (after `cast`/`wrap`) for arithmetic, casts, or ternaries:
+
+```json
+{ "label": "Free", "expr": "${expr}->stack_size - ${expr}->stack_used" }
+```
+
+**Number base** (`base`) — default display base `dec` / `hex` / `bin` (also toggle live from the `10 / 16 / 2` button in the column header):
+
+```json
+{ "label": "Handle", "expr": "id", "base": "hex" }
+```
+
+**Usage bar** (`bar`) — render the value as a `used / max · %` bar, green → amber (`≥ warn`) → red (`≥ crit`); `max` is a sibling expression or a constant:
+
+```json
+{ "label": "Stack", "expr": "stack_used", "bar": { "max": "stack_size", "warn": 75, "crit": 90 } }
+```
+
+**Cross-reference link** (`link`) — render the value as a link; clicking jumps to the row in `section` whose `match` column equals it (only when a match exists):
+
+```json
+{ "label": "Owner", "expr": "owner", "link": { "section": "threads", "match": "ID" } }
+```
+
+**Conditional fields** (`when`) — show a column only when its boolean expression holds; put several on one discriminator for **tagged-union / variant** rows:
+
+```json
+{ "label": "Owner",   "expr": "owner",   "when": "locked",            "link": { "section": "threads", "match": "ID" } },
+{ "label": "Waiting", "expr": "waiters", "when": "${expr}.locked == 0" }
+```
+
+**Editable** (`editable`) — right-click the cell → **Edit value…** writes it back with GDB `set var` (assignable fields only):
+
+```json
+{ "label": "Locked", "expr": "locked", "editable": true }
+```
+
+**Hidden by default** (`hidden`) — start the column collapsed and **unfetched**; enable it from the **▦ Columns** menu:
+
+```json
+{ "label": "Next", "expr": "next", "hidden": true }
+```
+
+**Field `wrap`** — transform the value **after** access (`${expr}` = the accessed value), e.g. reinterpret a `void*` member differently per column:
+
+```json
+{ "label": "X", "expr": "data", "wrap": "((widget_t *)${expr})->x" }
+```
+
 ### Notes on `expr` and rendering
 
-You never declare types or sizes. Whatever `expr` evaluates to is formatted by GDB according to its type: enums render as names (`RUNNING`, `FIFO`), pointers as addresses, integers as numbers. A fixed-size `char` array is shown only up to the first `\0` — the trailing NULs GDB prints (`"abc\000\000"` or `"abc", '\000' <repeats N times>`) are dropped, so you just see `"abc"`. A value GDB cannot read (an inaccessible address, an error such as `optimized out`) or a NULL pointer (`0x0`) is shown as a muted `-`; a plain integer `0` is shown as `0` (and keeps styling such as a red `Count`).
+You never declare types or sizes. Whatever `expr` evaluates to is formatted by GDB according to its type: enums render as names (`RUNNING`, `FIFO`), pointers as addresses, integers as numbers. A fixed-size `char` array is shown only up to the first `\0` — the trailing NULs GDB prints (`"abc\000\000"` or `"abc", '\000' <repeats N times>`) are dropped, so you just see `"abc"`. A value GDB cannot read (an inaccessible address, an error such as `optimized out`) or a NULL pointer (`0x0`) is shown as a muted `-`; a plain integer `0` is shown as `0`.
 
 ## Settings
 
