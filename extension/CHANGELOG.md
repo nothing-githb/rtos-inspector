@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.36.1] - 2026-06-09
+
+### Fixed
+- Removed a stale bundled `rtos-inspector.json` example from the package (left over
+  from the rename). The README documents the config and the runnable demo lives in
+  `test-workspace/`.
+
 ## [0.36.0] - 2026-06-09
 
 ### Added

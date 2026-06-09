@@ -1,0 +1,207 @@
+{
+  "processes": [
+    {
+      "PID": "1",
+      "Name": "0x100404079 \"init\""
+    },
+    {
+      "PID": "2",
+      "Name": "0x10040407e \"worker\""
+    }
+  ],
+  "threads": [
+    {
+      "group": "init",
+      "rows": [
+        {
+          "ID": "1",
+          "Name": "0x100404000 \"main\"",
+          "State": "RUNNING",
+          "Stack": "4096",
+          "Free": "12288"
+        },
+        {
+          "ID": "2",
+          "Name": "0x100404005 \"worker-1\"",
+          "State": "READY",
+          "Stack": "15616",
+          "Free": "768"
+        }
+      ]
+    },
+    {
+      "group": "worker",
+      "rows": [
+        {
+          "ID": "3",
+          "Name": "0x10040400e \"worker-2\"",
+          "State": "WAITING",
+          "Stack": "10752",
+          "Free": "5632"
+        },
+        {
+          "ID": "4",
+          "Name": "0x100404017 \"logger\"",
+          "State": "WAITING",
+          "Stack": "13056",
+          "Free": "3328"
+        }
+      ]
+    }
+  ],
+  "mutexes": [
+    {
+      "ID": "1",
+      "Name": "0x10040401e \"bus_lock\"",
+      "Locked": "1",
+      "Owner": "1",
+      "Waiting": null
+    },
+    {
+      "ID": "2",
+      "Name": "0x100404027 \"log_lock\"",
+      "Locked": "0",
+      "Owner": null,
+      "Waiting": "0"
+    }
+  ],
+  "semaphores": [
+    {
+      "group": "init",
+      "rows": [
+        {
+          "ID": "1",
+          "Count": "0",
+          "Max": "1",
+          "Waiting": "2",
+          "Discipline": "FIFO"
+        },
+        {
+          "ID": "2",
+          "Count": "3",
+          "Max": "5",
+          "Waiting": "0",
+          "Discipline": "PRIORITY"
+        }
+      ]
+    },
+    {
+      "group": "worker",
+      "rows": [
+        {
+          "ID": "3",
+          "Count": "1",
+          "Max": "1",
+          "Waiting": "0",
+          "Discipline": "FIFO"
+        }
+      ]
+    }
+  ],
+  "timers": [
+    {
+      "ID": "1",
+      "Name": "0x100404030 \"tick\"",
+      "Period": "10",
+      "Elapsed": "0",
+      "Active": "1"
+    },
+    {
+      "ID": "2",
+      "Name": "0x100404035 \"watchdog\"",
+      "Period": "100",
+      "Elapsed": "50",
+      "Active": "1"
+    },
+    {
+      "ID": "3",
+      "Name": "0x10040403e \"blink\"",
+      "Period": "5",
+      "Elapsed": "0",
+      "Active": "0"
+    }
+  ],
+  "widgets": [
+    {
+      "X": "10",
+      "Y": "20",
+      "Label": "0x100404044 \"button\""
+    },
+    {
+      "X": "30",
+      "Y": "40",
+      "Label": "0x10040404b \"slider\""
+    },
+    {
+      "X": "50",
+      "Y": "60",
+      "Label": "0x100404052 \"label\""
+    }
+  ],
+  "slots": [
+    {
+      "X": "10",
+      "Y": "20",
+      "Label": "0x100404044 \"button\""
+    },
+    {
+      "X": "30",
+      "Y": "40",
+      "Label": "0x10040404b \"slider\""
+    },
+    {
+      "X": "50",
+      "Y": "60",
+      "Label": "0x100404052 \"label\""
+    }
+  ],
+  "pool": [
+    {
+      "ID": "101",
+      "Name": "0x100404058 \"alpha\"",
+      "Tag": "\"alpha\""
+    },
+    {
+      "ID": "102",
+      "Name": "0x10040405e \"beta\"",
+      "Tag": "\"beta\""
+    },
+    {
+      "ID": "103",
+      "Name": "0x100404063 \"gamma\"",
+      "Tag": "\"gamma\""
+    }
+  ],
+  "procSlots": [
+    {
+      "group": "init",
+      "rows": [
+        {
+          "ID": "101",
+          "Name": "0x100404058 \"alpha\""
+        },
+        {
+          "ID": "102",
+          "Name": "0x10040405e \"beta\""
+        },
+        {
+          "ID": "103",
+          "Name": "0x100404063 \"gamma\""
+        }
+      ]
+    },
+    {
+      "group": "worker",
+      "rows": [
+        {
+          "ID": "201",
+          "Name": "0x100404069 \"w-a\""
+        },
+        {
+          "ID": "202",
+          "Name": "0x10040406d \"w-b\""
+        }
+      ]
+    }
+  ]
+}
