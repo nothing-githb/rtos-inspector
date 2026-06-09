@@ -2,20 +2,20 @@
   "name": "debug-inspector",
   "displayName": "Debug Inspector",
   "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "publisher": "halistahasahin",
   "license": "MIT",
   "icon": "icon.png",
   "author": {
     "name": "Halis Taha Sahin"
   },
-  "homepage": "https://github.com/nothing-githb/rtos-inspector#readme",
+  "homepage": "https://github.com/nothing-githb/debug-inspector#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nothing-githb/rtos-inspector.git"
+    "url": "https://github.com/nothing-githb/debug-inspector.git"
   },
   "bugs": {
-    "url": "https://github.com/nothing-githb/rtos-inspector/issues"
+    "url": "https://github.com/nothing-githb/debug-inspector/issues"
   },
   "engines": {
     "vscode": "^1.80.0"

@@ -2,6 +2,12 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.34.1] - 2026-06-09
+
+### Changed
+- Point `homepage` / `repository` / `bugs` and the README image at the renamed
+  GitHub repository **`nothing-githb/debug-inspector`**.
+
 ## [0.34.0] - 2026-06-09
 
 ### Changed (renamed to the "Debug Inspector" name)

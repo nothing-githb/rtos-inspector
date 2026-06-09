@@ -4,7 +4,7 @@
 
 Debug Inspector turns the structures *you* describe into clean, tabbed, sortable tables that refresh every time your GDB (`cppdbg`) session stops. Point it at any global expression — a thread-control-block list, a semaphore pool, a ready/blocked queue, a timer array, an intrusive free-list, or any node list — and it walks that structure and renders it for you, no more manually expanding nodes in the debugger. What appears is driven entirely by a small `debug-inspector.json` file you write, so the extension knows nothing about your types and works with **any** C/C++ codebase: bare-metal, a hobby or commercial RTOS, or plain application code. It is aimed at embedded / RTOS developers inspecting their own kernels, but it is just as useful to any C/C++ developer who wants a live view of a struct collection. It is strictly **read-only** for your program: it never calls functions and never writes your memory — the only `set` commands it issues target dedicated GDB convenience variables (`$ri_*` / `$rg_*`) used as traversal cursors.
 
-![Debug Inspector panel](https://raw.githubusercontent.com/nothing-githb/rtos-inspector/master/extension/images/panel.png)
+![Debug Inspector panel](https://raw.githubusercontent.com/nothing-githb/debug-inspector/master/extension/images/panel.png)
 
 *Representative panel — per-process threads with `State` badges, stack‑usage bars, an `Owner` cross‑reference link, change highlighting, and per‑column number‑base / sort controls.*
 

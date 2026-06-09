@@ -10,7 +10,7 @@ nothing about your types, so it works with any C/C++ codebase: bare-metal, a
 hobby or commercial RTOS, or plain application code. It is **config-driven** and
 **read-only** — it never writes your program's memory.
 
-> Repository: https://github.com/nothing-githb/rtos-inspector
+> Repository: https://github.com/nothing-githb/debug-inspector
 
 ![Debug Inspector panel](extension/images/panel.png)
 
