@@ -516,29 +516,6 @@ npx @vscode/vsce package # produces a .vsix
 For live development, open `extension/` in VS Code and press **F5** to launch an
 Extension Development Host.
 
-## Try the example
-
-Open `test-workspace/` as a folder. It contains `threads_demo.c` — a tiny demo
-with **two processes** (`init`, `worker`), each owning its own semaphore list,
-plus an independent timer array and several `void*`/index examples. The matching
-`debug-inspector.json` shows a `processes` list and **grouping** (`semaphores` and
-`procSlots` grouped under `processes` via `${master}`), an `array` timer tab, and
-`cast` / `wrap` / `index_list` examples (`widgets`, `slots`, `boxes`, `pool` — the
-latter with a default-hidden `Next` column). Everything fills in on each stop;
-open the Semaphores tab to see every process's semaphores as a tree. The
-`.vscode/{launch,tasks}.example.json` templates (copy to `launch.json` /
-`tasks.json` and set your toolchain path) include Cygwin GDB tips in comments.
-
-## Performance
-
-Refresh cost is dominated by the **number of GDB round‑trips** (today one `print`
-per field per row). [**docs/PERFORMANCE.md**](docs/PERFORMANCE.md) has a full study
-on a large environment (2000 rows × 10 fields) with **real measurements** (GDB
-15.2): fetching one whole element or whole array per call is **5–10× faster** in raw
-GDB time (and far more over the debug adapter), with parsing the bigger blob costing
-~2 ms. It also ranks the concrete optimizations (debounce stops, stateless list walk,
-batch fetch, lazy per‑tab).
-
 ## License
 
 [MIT](extension/LICENSE)
