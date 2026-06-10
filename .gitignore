@@ -10,6 +10,9 @@ node_modules/
 extension/out/
 *.log
 
+# Packaged extension (.vsix) — build artifact; ship as a GitHub Release asset, not in source
+dist/
+
 # Test workspace build outputs (keep the folder, ignore artifacts)
 test-workspace/build/*
 !test-workspace/build/.gitkeep
