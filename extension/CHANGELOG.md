@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.42.1] - 2026-06-10
+
+### Fixed
+- **Stale-refresh cleanup when stepping fast.** Rapid step/continue already cancels
+  superseded refreshes and runs only the latest (debounce + generation guard). Now,
+  when the program resumes mid‑refresh, the per‑tab “updating” spinners are also
+  cleared (previously only the Refresh button was), so no spinner lingers while
+  running.
+
 ## [0.42.0] - 2026-06-10
 
 ### Added

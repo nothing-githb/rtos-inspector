@@ -2196,7 +2196,7 @@ function getHtml(): string {
       else chEl.classList.add('hidden');
     } else if (m.type === 'running') {
       if (!paused) { statusEl.textContent = 'running…'; statusEl.className = 'pill run'; }
-      setRefreshing(false); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }
+      setRefreshing(false); clearAllUpdating(); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // iptal edilen refresh'in spinner'larını da temizle
     } else if (m.type === 'beginUpdate') {
       // durak başı iskelet: ts + layout + kaldırılanları temizle. Bölümler 'patchSection' ile ÖNCELİKLİ akar.
       setRefreshing(true); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // yenileme başladı -> düğme döner
