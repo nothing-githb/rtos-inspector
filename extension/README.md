@@ -43,7 +43,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   (not the whole panel). A section can also start hidden with `"hidden": true`
   in config.
 - **Readable UI.** Recognized columns get automatic styling: a `State` column becomes a colored badge (RUNNING / READY / BLOCKED / WAITING — or your own value→color map via a field's `"badge"`), plus a summary line per tab. Changed cells light up amber.
-- **Read-only by default (optional editing).** Debug Inspector only *reads* your data — it never calls functions. A field can opt into editing with `"editable": true`; then right-click → **Edit value…** writes it with GDB `set var`. Right-click any cell also offers **Copy cell**.
+- **Read-only by default (optional editing).** Debug Inspector only *reads* your data — it never calls functions. A field can opt into editing with `"editable": true`; then right-click → **Edit value…** writes it with GDB `set var`, and **only the edited row is re-read** afterwards (not the whole panel). Right-click any cell also offers **Copy cell**.
 - **Leveled, color-coded logging.** A *Debug Inspector* Output channel (rendered with the `log` syntax so timestamps/severities/values are colorized); pick `off` / `info` / `debug`.
 
 ## Requirements

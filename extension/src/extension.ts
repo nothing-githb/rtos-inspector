@@ -254,6 +254,35 @@ async function refreshTarget(section: string, label?: string) {
   }
 }
 
+// Edit value sonrası: SADECE düzenlenen satırı yeniden çek (tüm bölüm/panel değil).
+// array: ((cast)root)[i] (O(1)); linked_list: root(->next)^i (tek print, zincir GDB içinde). index_list/grouped -> bölüm yenile (fallback).
+async function refreshRow(section: string, rowIndex: number | null) {
+  if (!panel || !lastStopped) return;
+  const cfg = loadConfig(); if (!cfg) return;
+  const node = extractSections(cfg).find(s => s.name === section);
+  if (!node) return;
+  const scfg = node.cfg;
+  if (rowIndex == null || rowIndex < 0 || isGrouped(scfg) || scfg.mode === 'index_list') { refreshTarget(section); return; }
+  const session = lastStopped.session;
+  const frameId = lastStopped.frameId;
+  const eff = effectiveColumns(section, scfg.fields);
+  const effFields = eff.active.map(l => scfg.fields.find(f => f.label === l)).filter((f): f is FieldCfg => !!f);
+  let rawElem: string, access: string;
+  if (scfg.mode === 'array') {
+    const base = scfg.cast ? `((${scfg.cast})(${scfg.root}))` : `(${scfg.root})`;
+    rawElem = `${base}[${rowIndex}]`;
+    access = scfg.access ?? '.';
+  } else {   // linked_list: root->next->...->next (rowIndex kez)
+    let e = scfg.root; const nx = scfg.next ?? 'next';
+    for (let k = 0; k < rowIndex; k++) e = e + '->' + nx;
+    rawElem = e; access = '->';
+  }
+  const elem = scfg.wrap ? '(' + scfg.wrap.split('${expr}').join('(' + rawElem + ')') + ')' : rawElem;
+  const row = await collectRowFields(session, effFields, frameId, rawElem, elem, access);
+  log?.debug(`refreshRow: ${section}[${rowIndex}] -> ${Object.keys(row).filter(k => k.indexOf('__') !== 0).length} field(s)`);
+  panel.webview.postMessage({ type: 'patchRow', section, rowIndex, row });
+}
+
 // ---------------------------------------------------------------------------
 // GDB ile konuşma
 // ---------------------------------------------------------------------------
@@ -860,7 +889,9 @@ function openPanel(context: vscode.ExtensionContext) {
         if (/no symbol|cannot|lvalue|error|invalid|<<error/i.test(res)) {
           vscode.window.showErrorMessage(`Debug Inspector: edit failed — ${res}`);
         }
-        doRefresh();
+        // SADECE düzenlenen satırı güncelle (tüm paneli değil); bilinmiyorsa eski davranışa düş
+        if (typeof msg.section === 'string' && msg.section) refreshRow(msg.section, typeof msg.rowIndex === 'number' ? msg.rowIndex : null);
+        else doRefresh();
       } else if (msg?.type === 'export' && typeof msg.json === 'string') {
         // tüm görünür bölümlerin verisini JSON dosyasına dışa aktar
         const folder = vscode.workspace.workspaceFolders?.[0];
@@ -1450,7 +1481,7 @@ function getHtml(): string {
       : (st.sec.rows || []);
     return rows.some(r => String(r[mc]) === String(value));
   }
-  function dataRow(columns, row, changed, opts) {
+  function dataRow(columns, row, changed, opts, ri) {
     opts = opts || {};
     const numCols = opts.numCols || {};
     const colBase = opts.colBase || {};
@@ -1459,7 +1490,7 @@ function getHtml(): string {
     const badges = opts.badges || {};
     const sortCol = opts.sortCol;
     const rk = rowKeyOf(row, columns);
-    let h = '<tr>';
+    let h = '<tr' + (ri != null ? ' data-ri="' + ri + '"' : '') + '>';   // data-ri = kaynak satır index'i (edit -> tek satır güncelleme)
     for (const c of columns) {
       const ck = rk + '\\u0000' + c;
       const isChg = changed && Object.prototype.hasOwnProperty.call(changed, ck);
@@ -1501,9 +1532,12 @@ function getHtml(): string {
   }
   function buildTable(columns, rows, sortCol, sortDir, changed, opts) {
     if (!rows.length) return '<div class="empty">List is empty (root is NULL or count is 0).</div>';
-    const data = sortRows(rows, columns, sortCol, sortDir);
+    // kaynak index'i koru (sıralama görüntüyü değiştirir; data-ri kaynak satıra işaret etmeli)
+    let idx = rows.map((_, i) => i);
+    if (sortCol && columns.indexOf(sortCol) !== -1)
+      idx = idx.slice().sort((a, b) => { const c = compareVals(rows[a][sortCol] ?? '', rows[b][sortCol] ?? ''); return sortDir === 'desc' ? -c : c; });
     let h = '<table><thead><tr>' + headerCells(columns, sortCol, sortDir, opts && opts.numCols, opts && opts.colBase, opts && opts.bars) + '</tr></thead><tbody>';
-    for (const row of data) h += dataRow(columns, row, changed, opts);
+    for (const i of idx) h += dataRow(columns, rows[i], changed, opts, i);
     return h + '</tbody></table>';
   }
   // groupBy: master düğümleri + altında satırlar (aç/kapa)
@@ -1662,7 +1696,11 @@ function getHtml(): string {
     const cc = e.target.closest('.cell-copy');
     if (cc) { vscodeApi.postMessage({ type: 'copy', text: cc.dataset.text || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const ce = e.target.closest('.cell-edit');
-    if (ce) { vscodeApi.postMessage({ type: 'editValue', expr: ce.dataset.edit, current: ce.dataset.cur || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
+    if (ce) {
+      const riAttr = ce.dataset.ri;
+      vscodeApi.postMessage({ type: 'editValue', expr: ce.dataset.edit, current: ce.dataset.cur || '', section: ce.dataset.section || null, rowIndex: (riAttr != null && riAttr !== '') ? +riAttr : null });
+      for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return;
+    }
     const colsBtn = e.target.closest('.cols-btn');
     if (colsBtn) {
       e.stopPropagation();
@@ -1868,7 +1906,11 @@ function getHtml(): string {
       e.preventDefault();
       const txt = (td.textContent || '').trim();
       let h = '<div class="cm-item cell-copy" data-text="' + esc(txt) + '">Copy cell</div>';
-      if (td.dataset.edit) h += '<div class="cm-item cell-edit" data-edit="' + esc(td.dataset.edit) + '" data-cur="' + esc(td.getAttribute('title') || '') + '">Edit value…</div>';
+      if (td.dataset.edit) {
+        const tr = td.closest('tr');
+        const ri = (tr && tr.dataset.ri != null) ? tr.dataset.ri : '';
+        h += '<div class="cm-item cell-edit" data-edit="' + esc(td.dataset.edit) + '" data-cur="' + esc(td.getAttribute('title') || '') + '" data-section="' + esc(name) + '" data-ri="' + esc(ri) + '">Edit value…</div>';
+      }
       popMenu(name, e, h);
     }
   });
@@ -2095,6 +2137,13 @@ function getHtml(): string {
       // tek bölüm: durak akışındaki bir bölüm VEYA hedefli reveal -> bu sekme dolar/çizilir
       if (m.sec) { renderSection(m.section, m.sec); paint(m.section); buildColsMenu(m.section); recomputeChanged(); }
       if (m.ts) tsEl.textContent = 'updated ' + m.ts;
+    } else if (m.type === 'patchRow') {
+      // edit value sonrası tek satır güncelleme: yeni alanları o satıra yaz, bölümü (istemci-tarafı) yeniden boya
+      const st = secState[m.section];
+      if (st && st.sec && !st.sec.grouped && Array.isArray(st.sec.rows) && m.row && typeof m.rowIndex === 'number' && st.sec.rows[m.rowIndex]) {
+        Object.assign(st.sec.rows[m.rowIndex], m.row);
+        paint(m.section);
+      }
     } else if (m.type === 'patchColumn') {
       // tek kolon hedefli güncelleme (column show): yeni field'ı mevcut satırlara merge et
       const st = secState[m.section];

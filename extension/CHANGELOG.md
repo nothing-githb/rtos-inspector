@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.39.0] - 2026-06-10
+
+### Changed
+- **Edit value updates only that row.** After right-click → **Edit value…**, only
+  the edited row is re-read and refreshed (recomputing that row's `when`/`bar`/
+  computed cells), instead of refreshing the whole panel. `array` and `linked_list`
+  rows are re-fetched by position (a single element); `index_list` and grouped
+  sections fall back to a single-section refresh.
+
 ## [0.38.1] - 2026-06-10
 
 ### Added
