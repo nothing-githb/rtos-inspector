@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.42.2] - 2026-06-10
+
+### Fixed
+- **Panel closes when the debug session ends.** Previously the panel lingered with
+  stale data (and a possibly-spinning indicator) after the inspected session
+  terminated; it now closes automatically (`onDidTerminateDebugSession`) and resets
+  its state.
+
 ## [0.42.1] - 2026-06-10
 
 ### Fixed

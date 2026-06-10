@@ -137,6 +137,18 @@ export function activate(context: vscode.ExtensionContext) {
     );
   }
 
+  // Debug oturumu bittiğinde paneli kapat (izlenen oturum sona erince stale veri/spinner kalmasın)
+  context.subscriptions.push(
+    vscode.debug.onDidTerminateDebugSession(s => {
+      if (!panel) return;
+      const tracked = lastStopped?.session;
+      if (tracked && tracked !== s) return;   // bizim izlediğimiz oturum değil -> dokunma
+      log?.info('debug session terminated → closing panel');
+      lastStopped = undefined; printSetupFor = undefined; cancelRefresh();
+      panel.dispose();   // onDidDispose -> panel = undefined
+    })
+  );
+
   // config dosyası değişince (debugger durmuşsa ve panel açıksa) otomatik yenile
   setupConfigWatcher(context);
   context.subscriptions.push(
