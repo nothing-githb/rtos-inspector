@@ -182,6 +182,7 @@ let refreshing = false;
 let pendingRefresh = false;
 let refreshGen = 0;                 // her istek artar; refresh bunu izleyip eskiyi iptal eder
 const REFRESH_DEBOUNCE_MS = 140;
+let activeTab: string | undefined;  // webview'in o anki aktif sekmesi -> refresh önce onu çeker, sekme değişince öncelik değişir
 
 function doRefresh() {
   refreshGen++;                     // bekleyen/çalışan refresh'i geçersiz kıl
@@ -741,47 +742,58 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
   }
 
   const secs = extractSections(cfg);
+  const byName: Record<string, { name: string; cfg: SectionCfg; i: number }> = {};
+  secs.forEach((s, i) => { byName[s.name] = { name: s.name, cfg: s.cfg, i }; });
   const allNames = secs.map(s => s.name);
-  // sekme sırası (sectionPrefs.order) + yeni eklenenler sona; gizli sekmeler
+  // sekme sırası (sectionPrefs.order) + yeni eklenenler sona
   const order = (sectionPrefs.order || []).filter(n => allNames.includes(n));
   for (const n of allNames) if (!order.includes(n)) order.push(n);
   // gizli sekmeler: kullanıcı Sections menüsünde seçim yaptıysa (touched) onun listesi; yoksa config "hidden":true
   const configHidden = secs.filter(s => s.cfg.hidden).map(s => s.name);
   const hiddenNames = sectionPrefs.touched ? (sectionPrefs.hidden || []) : configHidden;
   const hiddenSet = new Set(hiddenNames.filter(n => allNames.includes(n)));
-  // gruplama hedefi olan master'lar gizli olsa bile toplanmalı
-  const masterTargets = new Set(secs.filter(s => isGrouped(s.cfg)).map(s => s.cfg.groupBy));
-  log?.info(`refresh: ${secs.length} section(s); visible=[${order.filter(n => !hiddenSet.has(n)).join(', ')}] hidden=[${[...hiddenSet].join(', ')}]`);
+  const visible = order.filter(n => !hiddenSet.has(n));
+  const ts = new Date().toLocaleTimeString();
+  log?.info(`refresh: ${secs.length} section(s); visible=[${visible.join(', ')}] active=${activeTab ?? '-'}`);
 
-  // 1. geçiş: gruplanmayan (bağımsız/master) bölümleri topla (gizli + master-hedefi olmayanları atla)
+  // iskeleti hazırla (ts + layout + kaldırılanları temizle); bölümler aşağıda ÖNCELİKLİ akışla gelir
+  panel.webview.postMessage({ type: 'beginUpdate', order, visible, hiddenSections: order.filter(n => hiddenSet.has(n)), ts });
+
+  // master cache (grouped bölümlerin bağımlılığı); görünür bir master kurulunca hemen gönderilir
   const masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
-  for (let i = 0; i < secs.length; i++) {
-    if (stale()) return;   // bölümler arası iptal: daha yeni refresh isteği var
-    const { name, cfg: scfg } = secs[i];
-    if (isGrouped(scfg)) continue;
-    if (hiddenSet.has(name) && !masterTargets.has(name)) continue;   // gizli & gruplama hedefi değil -> çekme
-    const sec = await buildSection(session, scfg, frameId, '$ri_' + i, name);
-    masters[name] = { sec, selExprs: sec.rows.map((_, idx) => selectorExpr(scfg, idx)), cfg: scfg };
-  }
+  const built = new Set<string>();
+  const sendSec = (name: string, sec: Section) => { built.add(name); panel?.webview.postMessage({ type: 'patchSection', section: name, sec, ts }); };
+  const ensureMaster = async (mName: string): Promise<void> => {
+    if (masters[mName]) return;
+    const mm = byName[mName]; if (!mm) return;
+    const msec = await buildSection(session, mm.cfg, frameId, '$ri_' + mm.i, mName);
+    masters[mName] = { sec: msec, selExprs: msec.rows.map((_, idx) => selectorExpr(mm.cfg, idx)), cfg: mm.cfg };
+    if (visible.includes(mName) && !built.has(mName)) sendSec(mName, msec);   // master aynı zamanda görünür sekme -> hemen göster
+  };
 
-  // 2. geçiş: görünür bölümleri kur (gizli olanları atla)
-  const built: Record<string, Section> = {};
-  for (let i = 0; i < secs.length; i++) {
+  // ÖNCELİKLİ KUYRUK: aktif sekme önce, sonra kalanlar (config sırası). Sekme değişirse (activeTab) sıradaki öncelik değişir.
+  const remaining = () => visible.filter(n => !built.has(n));
+  let rem: string[];
+  while ((rem = remaining()).length) {
+    if (stale()) return;   // daha yeni durak/istek -> bu (eski) akışı bırak
+    const next = (activeTab && rem.includes(activeTab)) ? activeTab : rem[0];
+    const node = byName[next];
+    let sec: Section;
+    if (isGrouped(node.cfg)) {
+      await ensureMaster(node.cfg.groupBy as string);
+      if (stale()) return;
+      sec = await buildGrouped(session, frameId, node.i, next, node.cfg, masters);
+    } else if (masters[next]) {
+      sec = masters[next].sec;   // başka bir grouped bölüm için zaten kurulmuş
+    } else {
+      sec = await buildSection(session, node.cfg, frameId, '$ri_' + node.i, next);
+      masters[next] = { sec, selExprs: sec.rows.map((_, idx) => selectorExpr(node.cfg, idx)), cfg: node.cfg };
+    }
     if (stale()) return;
-    const { name, cfg: scfg } = secs[i];
-    if (hiddenSet.has(name)) continue;
-    built[name] = isGrouped(scfg) ? await buildGrouped(session, frameId, i, name, scfg, masters) : masters[name].sec;
+    if (!built.has(next)) sendSec(next, sec);
   }
-  if (stale()) return;   // son anda daha yeni istek geldiyse bu (eski) sonucu gönderme
-  const sections = order.filter(n => !hiddenSet.has(n)).map(n => built[n]).filter(Boolean);
-
-  panel.webview.postMessage({
-    type: 'update',
-    sections,
-    hiddenSections: order.filter(n => hiddenSet.has(n)),
-    order,   // TEK interleaved sıra (görünür+gizli) -> webview istemci-tarafı reorder/hide için
-    ts: new Date().toLocaleTimeString()
-  });
+  if (stale()) return;
+  panel.webview.postMessage({ type: 'endUpdate', ts });   // akış bitti -> webview aktif sekmeyi son kez boyar (çapraz-link çözülür)
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +809,7 @@ function openPanel(context: vscode.ExtensionContext) {
   panel.webview.onDidReceiveMessage(
     async (msg: any) => {
       if (msg?.type === 'refresh') { log?.debug('webview: manual refresh'); doRefresh(); return; }
+      if (msg?.type === 'activeTab') { if (typeof msg.section === 'string') activeTab = msg.section; return; }
       if (msg?.type === 'setColumns' && typeof msg.section === 'string' && msg.section) {
         log?.debug(`webview: setColumns ${msg.section} hidden=[${(msg.hidden || []).join(', ')}] refetch=${!!msg.refetch}`);
         columnPrefs[msg.section] = {
@@ -1143,6 +1156,7 @@ function getHtml(): string {
       '</div>').join('');
     if (idxOf(activeName) === -1) activeName = names[0];
     applyActive();
+    notifyActive();   // uzantı o anki aktif sekmeyi bilsin (öncelik için)
   }
 
   function applyActive() {
@@ -1152,11 +1166,14 @@ function getHtml(): string {
       p.classList.toggle('hidden', currentNames[+p.dataset.idx] !== activeName);
   }
 
+  function notifyActive() { if (activeName) vscodeApi.postMessage({ type: 'activeTab', section: activeName }); }
   function switchTab(name) {
     activeName = name;
     const t = tabElOf(name);
     if (t) t.classList.remove('haschg');
     applyActive();
+    if (secState[name] && secState[name].sec) paint(name);   // taze boya: çapraz-link eşleşmesi + sıralama korunur
+    notifyActive();   // uzantı sıradaki öncelik için bu sekmeyi öne alsın
   }
 
   // çapraz-referans: hedef bölüme git ve 'match' kolonu 'value' olan satırı vurgula
@@ -2044,9 +2061,23 @@ function getHtml(): string {
       else chEl.classList.add('hidden');
     } else if (m.type === 'running') {
       if (!paused) { statusEl.textContent = 'running…'; statusEl.className = 'pill run'; }
+    } else if (m.type === 'beginUpdate') {
+      // durak başı iskelet: ts + layout + kaldırılanları temizle. Bölümler 'patchSection' ile ÖNCELİKLİ akar.
+      if (!paused) { statusEl.textContent = 'stopped'; statusEl.className = 'pill'; }
+      tsEl.textContent = m.ts ? ('updated ' + m.ts) : '';
+      const vis = Array.isArray(m.visible) ? m.visible : [];
+      hiddenSections = Array.isArray(m.hiddenSections) ? m.hiddenSections : [];
+      sectionOrder = Array.isArray(m.order) ? m.order.slice() : vis.concat(hiddenSections);
+      ensureLayout(vis);
+      for (const k of Object.keys(secState)) if (vis.indexOf(k) === -1) delete secState[k];
+    } else if (m.type === 'endUpdate') {
+      // akış bitti: aktif sekmeyi son kez boya (çapraz-link hedefleri artık yüklü) + rozet
+      if (activeName && secState[activeName] && secState[activeName].sec) { paint(activeName); buildColsMenu(activeName); }
+      recomputeChanged();
+      if (m.ts) tsEl.textContent = 'updated ' + m.ts;
     } else if (m.type === 'patchSection') {
-      // tek bölüm hedefli güncelleme (section reveal): sadece bu sekme dolar/çizilir
-      if (m.sec) { renderSection(m.section, m.sec); paint(m.section); buildColsMenu(m.section); }
+      // tek bölüm: durak akışındaki bir bölüm VEYA hedefli reveal -> bu sekme dolar/çizilir
+      if (m.sec) { renderSection(m.section, m.sec); paint(m.section); buildColsMenu(m.section); recomputeChanged(); }
       if (m.ts) tsEl.textContent = 'updated ' + m.ts;
     } else if (m.type === 'patchColumn') {
       // tek kolon hedefli güncelleme (column show): yeni field'ı mevcut satırlara merge et

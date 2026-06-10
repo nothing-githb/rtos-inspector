@@ -14,6 +14,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 - **Three traversal modes.** `linked_list` (follow a `next` pointer until NULL), `array` (iterate `count` elements), and `index_list` (a list stored inside an array, linked by a next-*index* field, walking from `head` to `nil`; unused slots are skipped).
 - **Arbitrary root expressions.** `root` is passed to GDB verbatim, so anything valid works: `head`, `g_sys.thread_list`, `g_kernel.pools[0]->thread_list`.
 - **Live updates.** The panel refreshes on every stop and shows a `running…` badge while the program runs; a status pill reads `stopped` / `running…` / `paused`, plus an `updated <time>` timestamp.
+- **Prioritized streaming refresh.** On each stop the **active tab is fetched and shown first**, then the other visible sections stream in **in the background**. **Switching tabs re-prioritizes** — the tab you open jumps the queue and is fetched next — so large workspaces stay responsive.
 - **Sortable columns.** Click a header to sort (numeric/hex columns sort numerically, text alphabetically); click again to toggle direction. The choice persists across stops.
 - **Filter & changed-only.** A per-tab filter box narrows rows as you type (focus is preserved); a **Changed** toggle shows only rows that moved since the last stop.
 - **Copy out & export.** Copy the (filtered) table as **CSV** or **Markdown** in one click (grouped tables add a leading `Group` column); or **⤓ JSON** in the top bar **exports every section's data to a JSON file** (save dialog).

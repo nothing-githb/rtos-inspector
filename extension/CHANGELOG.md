@@ -2,6 +2,17 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.38.0] - 2026-06-10
+
+### Changed (performance)
+- **Prioritized streaming refresh.** On each stop the **active tab is fetched and
+  shown first**, then the remaining visible sections stream in **in the background**,
+  one section at a time. **Switching tabs re-prioritizes** — the section you switch
+  to jumps the queue and is fetched next. Cross-section links on the active tab
+  resolve once their target sections arrive. Replaces the previous
+  fetch-all-then-render-once approach, so large multi-tab workspaces become
+  interactive almost immediately.
+
 ## [0.37.0] - 2026-06-10
 
 ### Changed (performance)
