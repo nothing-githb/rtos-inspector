@@ -1156,6 +1156,7 @@ function getHtml(): string {
   .btn.busy { opacity: 0.75; }
   .btn .ricon { display: inline-block; }
   .btn.busy .ricon { animation: di-spin 0.8s linear infinite; }
+  .tab.updating::after { content: '⟳'; display: inline-block; margin-left: 5px; opacity: 0.7; font-size: 11px; animation: di-spin 0.8s linear infinite; }
 
   .pill.chg { background: rgba(241,196,15,0.20); color: #f1c40f; }
   td.changed {
@@ -2020,6 +2021,9 @@ function getHtml(): string {
     const st = secState[name]; const cnt = cntElOf(name);
     if (st && st.sec && cnt) cnt.textContent = st.sec.grouped ? (st.sec.groups || []).reduce((a, g) => a + g.rows.length, 0) : st.sec.rows.length;
   }
+  // refresh sırasında sekme "güncelleniyor" spinner'ı (verisi gelince temizlenir)
+  function setTabUpdating(name, on) { const t = tabElOf(name); if (t) t.classList.toggle('updating', !!on); }
+  function clearAllUpdating() { for (const n of currentNames) setTabUpdating(n, false); }
   // "N changed" rozetini SADECE görünür (açık) bölümlerin değişiklik sayısından hesapla
   function recomputeChanged() {
     let total = 0;
@@ -2205,15 +2209,19 @@ function getHtml(): string {
       for (const k of Object.keys(secState)) if (vis.indexOf(k) === -1) delete secState[k];
       // henüz çekilmemiş (verisi olmayan) görünür bölümler "Loading…" göstersin (streaming kuyruğunda bekleyenler)
       for (const n of vis) if (!hasData(n)) paintLoading(n);
+      // her görünür sekme "güncelleniyor" işaretlensin (verisi gelene kadar spinner); eski veri görünür kalır
+      for (const n of vis) setTabUpdating(n, true);
     } else if (m.type === 'endUpdate') {
       // akış bitti: aktif sekmeyi son kez boya (çapraz-link hedefleri artık yüklü) + rozet
       if (activeName && secState[activeName] && secState[activeName].sec) { paint(activeName); buildColsMenu(activeName); }
       recomputeChanged();
+      clearAllUpdating();   // tüm sekme spinner'larını temizle
       setRefreshing(false); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // yenileme bitti
       if (m.ts) tsEl.textContent = 'updated ' + m.ts;
     } else if (m.type === 'patchSection') {
       // tek bölüm: durak akışındaki bir bölüm VEYA hedefli reveal -> bu sekme dolar/çizilir
       if (m.sec) { renderSection(m.section, m.sec); paint(m.section); buildColsMenu(m.section); recomputeChanged(); }
+      setTabUpdating(m.section, false);   // bu sekme güncellendi -> spinner dursun
       if (m.ts) tsEl.textContent = 'updated ' + m.ts;
     } else if (m.type === 'presentationUpdate') {
       // config'te yalnız sunum değişti (base/bar eşiği/link/badge) -> GDB'siz: mevcut satırları koru, yeniden çiz

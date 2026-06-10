@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.42.0] - 2026-06-10
+
+### Added
+- **Per-tab update status during refresh.** Each section's tab now shows a small
+  spinning **⟳** while its data is still being fetched, clearing the instant that
+  section arrives — so you can see which sections have updated and which are still
+  queued (the active tab is fetched first). Manual **Refresh** uses the same
+  prioritized streaming; the Refresh button shows the overall state.
+
 ## [0.41.1] - 2026-06-10
 
 ### Changed
