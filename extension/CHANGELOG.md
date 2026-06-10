@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.43.2] - 2026-06-10
+
+### Changed
+- **Faster cancellation when resuming mid‑refresh.** A superseded refresh (you
+  continued, or hit a new breakpoint) now aborts at the **row/group level** — not
+  just between sections — so it stops issuing GDB reads to a now‑running target
+  almost immediately, releases the GDB lock, and the fresh refresh for the new stop
+  starts sooner. Stale results were already discarded; this just stops the wasted
+  work quicker.
+
 ## [0.43.1] - 2026-06-10
 
 ### Fixed

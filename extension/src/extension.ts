@@ -520,7 +520,8 @@ async function collectSection(
   cfg: SectionCfg,
   frameId: number | undefined,
   cursor: string,
-  name: string = ''
+  name: string = '',
+  isStale?: () => boolean   // iptal kancası: continue/yeni durak gelince satır döngüsünü erken bırak (çalışan hedefe print atma)
 ): Promise<Row[]> {
   const rows: Row[] = [];
   const max = cfg.max ?? 1024;
@@ -533,6 +534,7 @@ async function collectSection(
     const count = parseInt(cleanValue(countRaw), 10) || 0;
     log.debug(`array "${name}": count(${cfg.count})="${cleanValue(countRaw)}" → ${count}; element = ${base}[i]${access}<field>, access="${access}"`);
     for (let i = 0; i < Math.min(count, max); i++) {
+      if (isStale && isStale()) break;   // continue/yeni durak -> çalışan hedefe print atma, erken bırak
       // eleman: ((cast*)root)[i]; field'a erişmeden ÖNCE wrap ile sarmalanır
       const elemRaw = `${base}[${i}]`;
       const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + elemRaw + ')') + ')' : elemRaw; // (wrap)<access>field
@@ -558,6 +560,7 @@ async function collectSection(
     let guard = 0;
     let reason = 'end';
     while (true) {
+      if (isStale && isStale()) { reason = 'stale (resumed/superseded)'; break; }
       if (guard++ >= max) { reason = `max bound (${max})`; break; }
       if (!Number.isFinite(idx)) { reason = 'non-numeric index'; break; }
       if (idx === nilNum) { reason = `reached nil (${nilNum})`; break; }
@@ -588,6 +591,7 @@ async function collectSection(
     // #2: cursor=root + ilk değer (null-check) TEK çağrıda; düğüm başına ayrı 'print cursor' turu yok
     let cur = cleanValue(await gdbExec(session, `print ${cursor} = ${cfg.root}`, frameId));
     while (true) {
+      if (isStale && isStale()) { reason = 'stale (resumed/superseded)'; break; }
       if (guard++ >= max) { reason = `max bound (${max})`; break; }
       if (isNull(cur)) { reason = 'reached NULL'; break; }
       // node (cursor); field'a erişmeden ÖNCE wrap ile sarmalanır
@@ -720,13 +724,14 @@ async function buildSection(
   cfg: SectionCfg,
   frameId: number | undefined,
   cursor: string,
-  name: string
+  name: string,
+  isStale?: () => boolean
 ): Promise<Section> {
   const eff = effectiveColumns(name, cfg.fields);
   const effFields = eff.active
     .map(l => cfg.fields.find(f => f.label === l))
     .filter((f): f is FieldCfg => !!f);
-  const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor, name);
+  const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor, name, isStale);
   log?.debug(`section "${name}" (${cfg.mode}, root=${cfg.root}): ${rows.length} row(s); active=[${eff.active.join(', ')}]`);
   return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields), badges: fieldBadges(cfg.fields) };
 }
@@ -776,7 +781,8 @@ async function buildGrouped(
   i: number,
   name: string,
   scfg: SectionCfg,
-  masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }>
+  masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }>,
+  isStale?: () => boolean
 ): Promise<Section> {
   const eff = effectiveColumns(name, scfg.fields);
   const effFields = eff.active
@@ -790,6 +796,7 @@ async function buildGrouped(
   const masterAcc = m.cfg.mode === 'array' ? (m.cfg.access ?? '.') : '->';
   const groups: Group[] = [];
   for (let mi = 0; mi < m.sec.rows.length; mi++) {
+    if (isStale && isStale()) break;   // continue/yeni durak -> grupları çekmeyi bırak
     const selExpr = m.selExprs[mi];
     const subCfg: SectionCfg = {
       ...scfg,
@@ -799,7 +806,7 @@ async function buildGrouped(
       head: scfg.head ? substituteMaster(scfg.head, selExpr) : scfg.head,
       nil: scfg.nil ? substituteMaster(scfg.nil, selExpr) : scfg.nil
     };
-    const rows = await collectSection(session, subCfg, frameId, '$rg_' + i + '_' + mi, name);
+    const rows = await collectSection(session, subCfg, frameId, '$rg_' + i + '_' + mi, name, isStale);
     const key = rowKeyAt(m.sec, mi) ?? String(mi);
     const label = m.cfg.label
       ? nodeLabel(cleanValue(await gdbExec(session, `print (${selExpr})${masterAcc}${m.cfg.label}`, frameId)))
@@ -884,7 +891,7 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
   const ensureMaster = async (mName: string): Promise<void> => {
     if (masters[mName]) return;
     const mm = byName[mName]; if (!mm) return;
-    const msec = await buildSection(session, mm.cfg, frameId, '$ri_' + mm.i, mName);
+    const msec = await buildSection(session, mm.cfg, frameId, '$ri_' + mm.i, mName, stale);
     masters[mName] = { sec: msec, selExprs: msec.rows.map((_, idx) => selectorExpr(mm.cfg, idx)), cfg: mm.cfg };
     if (visible.includes(mName) && !built.has(mName)) sendSec(mName, msec);   // master aynı zamanda görünür sekme -> hemen göster
   };
@@ -900,11 +907,11 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
     if (isGrouped(node.cfg)) {
       await ensureMaster(node.cfg.groupBy as string);
       if (stale()) return;
-      sec = await buildGrouped(session, frameId, node.i, next, node.cfg, masters);
+      sec = await buildGrouped(session, frameId, node.i, next, node.cfg, masters, stale);
     } else if (masters[next]) {
       sec = masters[next].sec;   // başka bir grouped bölüm için zaten kurulmuş
     } else {
-      sec = await buildSection(session, node.cfg, frameId, '$ri_' + node.i, next);
+      sec = await buildSection(session, node.cfg, frameId, '$ri_' + node.i, next, stale);
       masters[next] = { sec, selExprs: sec.rows.map((_, idx) => selectorExpr(node.cfg, idx)), cfg: node.cfg };
     }
     if (stale()) return;
