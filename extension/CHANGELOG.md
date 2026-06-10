@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.43.1] - 2026-06-10
+
+### Fixed
+- **No more transient ⚠ errors while a tab loads.** A targeted fetch (revealing a
+  tab, showing a column, or an edit re-read) could overlap the on‑stop refresh;
+  both shared the same GDB convenience cursors (`$ri_*` / `$rg_*`), so one clobbered
+  the other mid‑traversal and some cells briefly resolved to GDB errors before the
+  clean pass corrected them (most visible on grouped tabs like *semaphores*). GDB
+  fetch operations are now **serialized through a mutex** so they never interleave.
+
 ## [0.43.0] - 2026-06-10
 
 ### Changed

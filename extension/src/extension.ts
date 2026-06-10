@@ -217,6 +217,19 @@ let refreshGen = 0;                 // her istek artar; refresh bunu izleyip esk
 const REFRESH_DEBOUNCE_MS = 140;
 let activeTab: string | undefined;  // webview'in o anki aktif sekmesi -> refresh önce onu çeker, sekme değişince öncelik değişir
 
+// GDB işlem MUTEX'i: refresh / refreshTarget / refreshRow asla İÇ İÇE çalışmasın.
+// (Hepsi $ri_*/$rg_* convenience cursor'larını paylaşıyor; eşzamanlı akarlarsa biri diğerinin
+//  cursor'unu ezer -> $cursor->next hatalı/NULL okur -> geçici ⚠ hücreler. Serileştirme bunu önler.)
+let gdbChain: Promise<unknown> = Promise.resolve();
+async function gdbAcquire(): Promise<() => void> {
+  let release: () => void = () => {};
+  const next = new Promise<void>(r => { release = r; });
+  const prev = gdbChain;
+  gdbChain = next;
+  await prev;        // önceki işlem bitene kadar bekle
+  return release;
+}
+
 function doRefresh() {
   refreshGen++;                     // bekleyen/çalışan refresh'i geçersiz kıl
   if (refreshTimer) clearTimeout(refreshTimer);
@@ -233,7 +246,9 @@ async function runRefresh() {
   try {
     do {
       pendingRefresh = false;
-      await refresh(lastStopped.session, lastStopped.threadId, refreshGen);
+      const rel = await gdbAcquire();   // hedefli işlemlerle iç içe geçmesin
+      try { await refresh(lastStopped.session, lastStopped.threadId, refreshGen); }
+      finally { rel(); }
     } while (pendingRefresh && !!lastStopped);
   } finally {
     refreshing = false;
@@ -251,6 +266,8 @@ async function refreshTarget(section: string, label?: string) {
   const idx = secs.findIndex(s => s.name === section);
   if (idx < 0) return;
   const scfg = secs[idx].cfg;
+  const rel = await gdbAcquire();   // refresh / diğer hedefli işlemlerle iç içe geçmesin (cursor çakışması -> ⚠)
+  try {
 
   // grouped bölüm için master'ı kur (sadece bu bölüm + master fetch edilir, diğer bölümlere dokunulmaz)
   let masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
@@ -285,6 +302,7 @@ async function refreshTarget(section: string, label?: string) {
     log?.debug(`refreshTarget: section "${section}" rebuilt`);
     panel.webview.postMessage({ type: 'patchSection', section, sec, ts });
   }
+  } finally { rel(); }
 }
 
 // Edit value sonrası: SADECE düzenlenen satırı yeniden çek (tüm bölüm/panel değil).
@@ -296,6 +314,8 @@ async function refreshRow(section: string, rowIndex: number | null) {
   if (!node) return;
   const scfg = node.cfg;
   if (rowIndex == null || rowIndex < 0 || isGrouped(scfg) || scfg.mode === 'index_list') { refreshTarget(section); return; }
+  const rel = await gdbAcquire();   // tekil satır fetch'i de refresh / diğer işlemlerle iç içe geçmesin
+  try {
   const session = lastStopped.session;
   const frameId = lastStopped.frameId;
   const eff = effectiveColumns(section, scfg.fields);
@@ -314,6 +334,7 @@ async function refreshRow(section: string, rowIndex: number | null) {
   const row = await collectRowFields(session, effFields, frameId, rawElem, elem, access);
   log?.debug(`refreshRow: ${section}[${rowIndex}] -> ${Object.keys(row).filter(k => k.indexOf('__') !== 0).length} field(s)`);
   panel.webview.postMessage({ type: 'patchRow', section, rowIndex, row });
+  } finally { rel(); }
 }
 
 // ---------------------------------------------------------------------------
