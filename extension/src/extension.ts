@@ -1138,6 +1138,10 @@ function getHtml(): string {
   .empty { opacity: 0.55; padding: 28px 4px; font-size: 13px; }
   .empty.loading { font-style: italic; animation: di-pulse 1.2s ease-in-out infinite; }
   @keyframes di-pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 0.7; } }
+  @keyframes di-spin { to { transform: rotate(360deg); } }
+  .btn.busy { opacity: 0.75; }
+  .btn .ricon { display: inline-block; }
+  .btn.busy .ricon { animation: di-spin 0.8s linear infinite; }
 
   .pill.chg { background: rgba(241,196,15,0.20); color: #f1c40f; }
   td.changed {
@@ -1164,7 +1168,7 @@ function getHtml(): string {
     <button id="sections-btn" class="btn" title="Show / hide sections (tabs)">▤ Sections</button>
     <button id="export-btn" class="btn" title="Export all sections' data as JSON">⤓ JSON</button>
     <button id="pause" class="btn" title="Pause/resume auto-refresh on each stop">⏸ Pause</button>
-    <button id="refresh" class="btn" title="Re-read config and refresh now">⟳ Refresh</button>
+    <button id="refresh" class="btn" title="Re-read config and refresh now"><span class="ricon">⟳</span> <span class="rlabel">Refresh</span></button>
   </div>
   <div class="cols-menu hidden" id="sections-menu"></div>
 
@@ -1186,8 +1190,19 @@ function getHtml(): string {
   let sectionOrder = [];     // TEK interleaved sıra (görünür+gizli), gerçek konumda
   let activeName = null;
 
+  let refreshFallback = null;
+  function setRefreshing(on) {
+    const b = document.getElementById('refresh');
+    if (!b) return;
+    b.classList.toggle('busy', !!on);
+    const lbl = b.querySelector('.rlabel');
+    if (lbl) lbl.textContent = on ? 'Refreshing…' : 'Refresh';
+  }
   document.getElementById('refresh').addEventListener('click', () => {
     vscodeApi.postMessage({ type: 'refresh' });
+    setRefreshing(true);   // anında görsel geri-bildirim (beginUpdate gelene kadar)
+    if (refreshFallback) clearTimeout(refreshFallback);
+    refreshFallback = setTimeout(() => setRefreshing(false), 4000);   // durmuş değil / akış gelmezse temizle
   });
 
   let paused = ${paused};
@@ -2159,8 +2174,10 @@ function getHtml(): string {
       else chEl.classList.add('hidden');
     } else if (m.type === 'running') {
       if (!paused) { statusEl.textContent = 'running…'; statusEl.className = 'pill run'; }
+      setRefreshing(false); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }
     } else if (m.type === 'beginUpdate') {
       // durak başı iskelet: ts + layout + kaldırılanları temizle. Bölümler 'patchSection' ile ÖNCELİKLİ akar.
+      setRefreshing(true); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // yenileme başladı -> düğme döner
       if (!paused) { statusEl.textContent = 'stopped'; statusEl.className = 'pill'; }
       tsEl.textContent = m.ts ? ('updated ' + m.ts) : '';
       const vis = Array.isArray(m.visible) ? m.visible : [];
@@ -2174,6 +2191,7 @@ function getHtml(): string {
       // akış bitti: aktif sekmeyi son kez boya (çapraz-link hedefleri artık yüklü) + rozet
       if (activeName && secState[activeName] && secState[activeName].sec) { paint(activeName); buildColsMenu(activeName); }
       recomputeChanged();
+      setRefreshing(false); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // yenileme bitti
       if (m.ts) tsEl.textContent = 'updated ' + m.ts;
     } else if (m.type === 'patchSection') {
       // tek bölüm: durak akışındaki bir bölüm VEYA hedefli reveal -> bu sekme dolar/çizilir

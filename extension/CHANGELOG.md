@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.40.1] - 2026-06-10
+
+### Added
+- **Refresh button progress feedback.** The **Refresh** button now spins its icon
+  and reads **“Refreshing…”** while a refresh is in progress (manual, on-stop, or
+  config), and returns to **“Refresh”** when it finishes — so it's clear whether
+  data is still loading. A 4 s fallback clears it if no refresh actually runs
+  (e.g. the debugger isn't stopped).
+
 ## [0.40.0] - 2026-06-10
 
 ### Changed (performance)

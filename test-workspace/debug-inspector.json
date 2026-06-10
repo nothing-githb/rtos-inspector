@@ -49,7 +49,7 @@
     "next": "next",
     "fields": [
       { "label": "ID",         "expr": "id" },
-      { "label": "Count",      "expr": "count" },
+      { "label": "Count",      "expr": "count", "editable": true},
       { "label": "Max",        "expr": "max_count" },
       { "label": "Waiting",    "expr": "waiting" },
       { "label": "Discipline", "expr": "discipline" }
