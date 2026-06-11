@@ -46,7 +46,9 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   colour and usage bar. **Hover** highlights a node's neighbours, **click** opens a
   details panel, **drag a node** to reposition it (the placement is remembered and
   follows the row across refreshes), **drag the background** to pan, **scroll** to zoom,
-  and **⤢ Fit** to recentre.
+  and **⤢ Fit** to recentre. When a section has cross-references, a **⇄ Links** toggle
+  overlays purple links to the linked rows in other sections (deduplicated; click a
+  target to jump to it).
 - **Usage bars.** Render a numeric field as a `used / max · %` bar
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Cross-reference links.** A field with `"link"` renders as a clickable link to

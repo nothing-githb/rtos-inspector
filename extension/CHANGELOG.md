@@ -2,6 +2,22 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.51.0] - 2026-06-11
+
+### Added
+- **Cross-section relationship links in the graph (Phase 2).** When a section has `link`
+  fields, the graph toolbar shows a **⇄ Links** toggle. Turning it on draws purple
+  dashed edges from each node to a compact, **deduplicated** target card representing
+  the linked row in another section (e.g. a mutex's owner → the owning thread). **Click
+  a target** to jump to its tab and flash the matching row. A small purple dot marks
+  nodes that have outgoing links. The layer is **off by default** and node/edge counts
+  are capped (with a notice) to stay responsive on large sections.
+
+### Fixed
+- **Graph edges no longer pass through node cards.** Group→member edges now route
+  orthogonally through the column gutter instead of cutting straight down across the
+  cards above their target.
+
 ## [0.50.0] - 2026-06-11
 
 ### Added

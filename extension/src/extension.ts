@@ -1307,6 +1307,10 @@ function getHtml(): string {
   .gedge { fill: none; stroke: #7d8590; stroke-width: 1.5; transition: opacity 0.12s, stroke 0.12s, stroke-width 0.12s; }
   .gedge.dim { opacity: 0.1; }
   .gedge.ehl { stroke: #3b9eff; stroke-width: 2.5; }
+  .gedge.link { stroke: #b07cc6; stroke-dasharray: 5 4; }
+  .gedge.link.ehl { stroke: #c79fda; stroke-width: 2.5; }
+  .gnode.gv-ghost .card { fill: rgba(176,124,198,0.10); stroke: #b07cc6; stroke-dasharray: 4 3; }
+  .gnode.gv-ghost:hover .card, .gnode.gv-ghost.sel .card { stroke: #c79fda; stroke-dasharray: none; }
   .ghdr { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
   .gbarbg { fill: rgba(128,128,128,0.24); }
   .gpct { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 9.5px; }
@@ -1608,6 +1612,7 @@ function getHtml(): string {
     if (st.view === 'graph') {
       h += '<button class="btn view-toggle" title="Switch back to the table view">▤ Table</button>';
       h += '<button class="btn graph-fit" title="Fit the graph to the view">⤢ Fit</button>';
+      if (st.sec.links && Object.keys(st.sec.links).length) h += '<button class="btn links-toggle' + ((st.gv && st.gv.links) ? ' on' : '') + '" title="Show cross-section relationship links (purple)">⇄ Links</button>';
       h += '<span class="grow"></span>';
       h += '<button class="btn cols-btn" title="Show / hide / reorder the fields shown on cards">▦ Fields</button>';
       h += '</div>';
@@ -1869,24 +1874,75 @@ function getHtml(): string {
         nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
       });
     }
+    // Phase 2: cross-section LINKS (mor) — yalnız "⇄ Links" açıkken. Kaynak düğümlerden hedef satırın
+    // (dedupe edilmiş) "ghost" düğümüne mor kesik kenar. linkHasTarget tablo xref'iyle BİREBİR aynı kuralı kullanır.
+    var GHOST_MAX = 200, LINK_EDGE_MAX = 600, linkCapped = false;
+    var showLinks = !!(st.gv && st.gv.links) && sec.links && Object.keys(sec.links).length;
+    if (showLinks) {
+      var src = nodes.slice();   // ghost'ları eklemeden ÖNCEki gerçek kaynak düğümler
+      var ghostByKey = {}, ghosts = [], linkEdges = 0, edgeSeen = {};
+      src.forEach(function (n) {
+        if (!n.row || !n.cols) return;
+        n.cols.forEach(function (c) {
+          var lk = sec.links[c]; if (!lk) return;
+          var raw = n.row[c];
+          if (raw == null || raw === '' || isDash(raw)) return;
+          if (!linkHasTarget(lk, raw)) return;            // hedefte eşleşen satır yoksa kenar yok
+          var tst = secState[lk.section]; if (!tst) return;
+          var tvis = tst.order.filter(function (l) { return tst.hidden.indexOf(l) === -1; });
+          var mc = lk.match || tvis[0];
+          var val = String(raw), gid = 'x:' + lk.section + ':' + mc + ':' + val;
+          if (!ghostByKey[gid]) {
+            if (ghosts.length >= GHOST_MAX) { linkCapped = true; return; }
+            var gh = { id: gid, ghost: true, pkey: gid, tsec: lk.section, mc: mc, val: val, w: Math.round(GVW * 0.74), h: 44, srcY: n.y };
+            ghostByKey[gid] = gh; ghosts.push(gh);
+          }
+          n.hasLink = true;
+          var ek = n.id + '|' + gid;
+          if (edgeSeen[ek]) return;   // aynı kaynaktan aynı hedefe 2. link kolonu -> tek kenar (cap'i de boşa harcama)
+          edgeSeen[ek] = 1;
+          if (linkEdges < LINK_EDGE_MAX) { edges.push({ from: n.id, to: gid, type: 'link' }); linkEdges++; }
+          else linkCapped = true;
+        });
+      });
+      // ghost'ları sağ "hedefler" oluğuna yerleştir: hedef bölüme göre kümele, kaynak-y'ye göre sırala (az kesişme)
+      var gx0 = 0; nodes.forEach(function (n) { if (n.x + n.w > gx0) gx0 = n.x + n.w; });
+      ghosts.sort(function (a, b) { return a.tsec < b.tsec ? -1 : a.tsec > b.tsec ? 1 : (a.srcY - b.srcY); });
+      ghosts.forEach(function (gh, k) { gh.x = gx0 + GVGX * 2; gh.y = GVPAD + 22 + k * (44 + GVGY); nodes.push(gh); });
+    }
     // kullanıcının sürükleyip taşıdığı düğüm konumları (kalıcı) otomatik yerleşimi ezsin (kararlı pkey ile)
     var saved = st.gv && st.gv.pos;
     if (saved) nodes.forEach(function (n) { var p = saved[n.pkey]; if (p) { n.x = p.x; n.y = p.y; } });
     var byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
     var mx = 0, my = 0; nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
-    return { nodes: nodes, edges: edges, byId: byId, capped: capped, cw: mx + GVPAD, ch: my + GVPAD };
+    return { nodes: nodes, edges: edges, byId: byId, capped: capped, linkCapped: linkCapped, cw: mx + GVPAD, ch: my + GVPAD };
   }
   function edgePath(a, b, type) {
-    if (type === 'next' || type === 'grouped') {
-      // aynı satırdaki serpentine komşular -> yatay S; farklı satır veya grouped -> dikey alt-üst S
-      if (type === 'next' && Math.abs(a.y - b.y) < a.h) {
-        var ax = a.x < b.x ? a.x + a.w : a.x, bx = a.x < b.x ? b.x : b.x + b.w;
-        var ay = a.y + a.h / 2, by = b.y + b.h / 2, hmx = (ax + bx) / 2;
-        return 'M' + ax + ',' + ay + ' C' + hmx + ',' + ay + ' ' + hmx + ',' + by + ' ' + bx + ',' + by;
+    if (type === 'grouped') {
+      // grup -> üye: üyenin SOL oluğundaki (gutter) dikey raydan dik-köşeli gir -> hiçbir kartı kesmez
+      var sx = a.x + a.w / 2, sy = a.y + a.h;          // grup alt-orta
+      var bx = b.x, my = b.y + b.h / 2;                // üye sol-orta
+      var gx = Math.max(6, bx - GVGX / 2);             // üye sütununun sol oluğundaki dikey ray
+      var d1 = gx >= sx ? 1 : -1, d2 = my >= sy ? 1 : -1;
+      var r = Math.min(8, Math.abs(my - sy) / 2, Math.abs(gx - sx) / 2) || 0;
+      return 'M' + sx + ',' + sy +
+        ' L' + (gx - d1 * r) + ',' + sy +
+        ' Q' + gx + ',' + sy + ' ' + gx + ',' + (sy + d2 * r) +
+        ' L' + gx + ',' + (my - d2 * r) +
+        ' Q' + gx + ',' + my + ' ' + (gx + r) + ',' + my +
+        ' L' + bx + ',' + my;
+    }
+    if (type === 'next') {
+      // aynı satırdaki serpentine komşular -> yatay S; sarma (farklı satır) -> dikey alt-üst S
+      if (Math.abs(a.y - b.y) < a.h) {
+        var ax = a.x < b.x ? a.x + a.w : a.x, bx2 = a.x < b.x ? b.x : b.x + b.w;
+        var ay = a.y + a.h / 2, by = b.y + b.h / 2, hmx = (ax + bx2) / 2;
+        return 'M' + ax + ',' + ay + ' C' + hmx + ',' + ay + ' ' + hmx + ',' + by + ' ' + bx2 + ',' + by;
       }
       var x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, vmy = (y1 + y2) / 2;
       return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + vmy + ' ' + x2 + ',' + vmy + ' ' + x2 + ',' + y2;
     }
+    // 'link' (cross-section) ve varsayılan: kaynak sağ-orta -> hedef sol-orta yatay S
     var X1 = a.x + a.w, Y1 = a.y + a.h / 2, X2 = b.x, Y2 = b.y + b.h / 2, gmx = (X1 + X2) / 2;
     return 'M' + X1 + ',' + Y1 + ' C' + gmx + ',' + Y1 + ' ' + gmx + ',' + Y2 + ' ' + X2 + ',' + Y2;
   }
@@ -1898,6 +1954,14 @@ function getHtml(): string {
         '<text class="gsub" x="' + (n.w - 12) + '" y="' + (n.h / 2 + 4) + '" text-anchor="end">' + n.count + '</text>' +
         '</g>';
     }
+    if (n.ghost) {   // cross-section link hedefi (kompakt mor kart; tıkla -> hedef sekmeye git)
+      var gsv = '<g class="gnode gv-ghost" data-id="' + esc(n.id) + '" data-sec="' + esc(n.tsec) + '" data-match="' + esc(n.mc) + '" data-val="' + esc(n.val) + '" transform="translate(' + n.x + ',' + n.y + ')">';
+      gsv += '<rect class="card" width="' + n.w + '" height="' + n.h + '" rx="8"></rect>';
+      gsv += '<rect x="0" y="0" width="4" height="' + n.h + '" rx="2" fill="#b07cc6"></rect>';
+      gsv += '<text class="gtitle" x="14" y="18">' + esc(shortVal(n.val)) + ' ↗</text>';
+      gsv += '<text class="gsub" x="14" y="34">' + esc(cap(n.tsec)) + '</text>';
+      return gsv + '</g>';
+    }
     var row = n.row, cols = n.cols, color = nodeColor(row, cols, badges);
     var title = cols.length ? shortVal(row[cols[0]]) : '';
     var fcols = cols.slice(1, 3);
@@ -1906,6 +1970,7 @@ function getHtml(): string {
     if (color) s += '<rect x="0" y="0" width="4" height="' + n.h + '" rx="2" fill="' + color + '"></rect>';
     s += '<text class="gtitle" x="14" y="20">' + esc(title) + '</text>';
     if (color) s += '<circle cx="' + (n.w - 14) + '" cy="15" r="5" fill="' + color + '"></circle>';
+    if (n.hasLink) s += '<circle cx="' + (n.w - 26) + '" cy="15" r="3" fill="#b07cc6"></circle>';   // dışa link var işareti
     var subTxt = fcols.map(function (c) { return esc(c) + ' ' + esc(shortVal(row[c])); }).join('   ·   ');
     if (subTxt) s += '<text class="gsub" x="14" y="37">' + subTxt + '</text>';
     var barCol = null; for (var bi = 0; bi < cols.length; bi++) { if (bars[cols[bi]]) { barCol = cols[bi]; break; } }
@@ -1929,11 +1994,14 @@ function getHtml(): string {
     var tbar = toolbarHtml(st);
     var summary = '<div class="summary">' + esc(st.sec.summary || '') + '</div>';
     if (!model.nodes.length) { body.innerHTML = summary + tbar + '<div class="gv-empty">Nothing to graph (list is empty).</div>'; return; }
-    var defs = '<defs><marker id="gar' + idx + '" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7d8590"></path></marker></defs>';
-    var eg = ''; model.edges.forEach(function (ed) { var a = model.byId[ed.from], b = model.byId[ed.to]; if (!a || !b) return; eg += '<path class="gedge ' + ed.type + '" data-f="' + esc(ed.from) + '" data-t="' + esc(ed.to) + '" d="' + edgePath(a, b, ed.type) + '" marker-end="url(#gar' + idx + ')"></path>'; });
+    var defs = '<defs><marker id="gar' + idx + '" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7d8590"></path></marker>' +
+      '<marker id="garl' + idx + '" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b07cc6"></path></marker></defs>';
+    var eg = ''; model.edges.forEach(function (ed) { var a = model.byId[ed.from], b = model.byId[ed.to]; if (!a || !b) return; eg += '<path class="gedge ' + ed.type + '" data-f="' + esc(ed.from) + '" data-t="' + esc(ed.to) + '" d="' + edgePath(a, b, ed.type) + '" marker-end="url(#' + (ed.type === 'link' ? 'garl' : 'gar') + idx + ')"></path>'; });
     var ng = ''; model.nodes.forEach(function (n) { ng += nodeSvg(n, badges, bars); });
     var total = st.sec.grouped ? (st.sec.groups || []).reduce(function (a, g) { return a + (g.rows || []).length; }, 0) : (st.sec.rows || []).length;
-    var banner = model.capped ? '<div class="gv-banner">Showing first ' + GRAPH_MAX + ' of ' + total + ' nodes — narrow the data or use the table view for the full set.</div>' : '';
+    var bannerTxt = model.capped ? ('Showing first ' + GRAPH_MAX + ' of ' + total + ' nodes — narrow the data or use the table view for the full set.') : '';
+    if (model.linkCapped) bannerTxt += (bannerTxt ? ' · ' : '') + 'Some links hidden — turn off ⇄ Links or use the table.';
+    var banner = bannerTxt ? ('<div class="gv-banner">' + bannerTxt + '</div>') : '';
     body.innerHTML = summary + tbar + banner +
       '<div class="gv-wrap">' +
       '<svg class="gv-svg" id="gsvg-' + idx + '"><g id="gvp-' + idx + '">' + defs + '<g class="gv-edges">' + eg + '</g><g class="gv-nodes">' + ng + '</g></g></svg>' +
@@ -1955,7 +2023,7 @@ function getHtml(): string {
         var f = p.getAttribute('data-f'), t = p.getAttribute('data-t');
         if (f !== movedId && t !== movedId) return;
         var a = model.byId[f], b = model.byId[t]; if (!a || !b) return;
-        p.setAttribute('d', edgePath(a, b, p.classList.contains('grouped') ? 'grouped' : 'next'));
+        p.setAttribute('d', edgePath(a, b, p.classList.contains('grouped') ? 'grouped' : p.classList.contains('link') ? 'link' : 'next'));
       });
     }
     function recomputeBounds() {   // sürükleme sonrası Fit doğru çerçevelesin (re-render olmadan)
@@ -1980,6 +2048,12 @@ function getHtml(): string {
     function clearFocus() { vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.remove('dim'); }); vp.querySelectorAll('.gedge').forEach(function (p) { p.classList.remove('dim'); p.classList.remove('ehl'); }); }
     function detailFor(id) {
       var n = model.byId[id]; if (!n) return;
+      if (n.ghost) {   // ghost'ta n.row/n.cols yok -> ayrı detay; tıklarsa gotoXref zaten hedefe götürür
+        document.getElementById('gdt-' + idx).textContent = shortVal(n.val);
+        document.getElementById('gdb-' + idx).innerHTML = '<div class="grow2"><span>links to</span><b>' + esc(cap(n.tsec)) + '</b></div><div class="grow2"><span>' + esc(n.mc) + '</span><b>' + esc(n.val) + '</b></div>';
+        det.style.display = 'block';
+        return;
+      }
       var t = n.group ? shortVal(n.label) : (n.cols.length ? shortVal(n.row[n.cols[0]]) : id);
       document.getElementById('gdt-' + idx).textContent = t;
       var html;
@@ -1991,7 +2065,13 @@ function getHtml(): string {
     function selectNode(id) { st.gv.sel = id; vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.toggle('sel', g.getAttribute('data-id') === id); }); focus(id); detailFor(id); }
     vp.addEventListener('mouseover', function (e) { var g = e.target.closest('.gnode'); if (g && !st.gv.sel) focus(g.getAttribute('data-id')); });
     vp.addEventListener('mouseout', function () { if (!st.gv.sel) clearFocus(); });
-    vp.addEventListener('click', function (e) { if (suppressClick) { suppressClick = false; return; } var g = e.target.closest('.gnode'); if (!g) return; e.stopPropagation(); selectNode(g.getAttribute('data-id')); });
+    vp.addEventListener('click', function (e) {
+      if (suppressClick) { suppressClick = false; return; }
+      var g = e.target.closest('.gnode'); if (!g) return; e.stopPropagation();
+      var gid = g.getAttribute('data-id'), gn = model.byId[gid];
+      if (gn && gn.ghost) { gotoXref(gn.tsec, gn.mc, gn.val); return; }   // ghost -> gerçek hedef sekme+satır
+      selectNode(gid);
+    });
     var dc = document.getElementById('gdc-' + idx);
     if (dc) dc.addEventListener('click', function (e) { e.stopPropagation(); st.gv.sel = null; det.style.display = 'none'; clearFocus(); vp.querySelectorAll('.gnode.sel').forEach(function (g) { g.classList.remove('sel'); }); });
     svg.addEventListener('wheel', function (e) {
@@ -2229,6 +2309,12 @@ function getHtml(): string {
     if (e.target.closest('.graph-fit')) {
       const name = paneName(e); const st = secState[name];
       if (st && typeof st._fit === 'function') st._fit();
+      return;
+    }
+    // graph: cross-section link katmanını aç/kapa (Phase 2)
+    if (e.target.closest('.links-toggle')) {
+      const name = paneName(e); const st = secState[name];
+      if (st) { if (!st.gv) st.gv = { sc: 1, tx: 0, ty: 0, sel: null, needFit: true, pos: {} }; st.gv.links = !st.gv.links; paint(name); }
       return;
     }
     // grup: düz/ağaç görünüm geçişi
