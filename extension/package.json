@@ -2,7 +2,7 @@
   "name": "debug-inspector",
   "displayName": "Debug Inspector",
   "description": "Visualize your own C/C++ data structures — threads, semaphores, mutexes, queues, linked lists, any struct collection — as live, sortable tables while debugging with GDB. Config-driven and read-only.",
-  "version": "0.47.0",
+  "version": "0.47.1",
   "publisher": "halistahasahin",
   "license": "MIT",
   "icon": "icon.png",
@@ -109,8 +109,8 @@
         },
         "debugInspector.maxHardwareWatchpoints": {
           "type": "number",
-          "default": 4,
-          "description": "How many watchpoints may use hardware debug registers. Beyond this, new watchpoints are created as (slower) software watchpoints so resuming doesn't fail with 'Couldn't insert hardware watchpoints: too many'. x86 has 4; set higher if your target has more, or 0 to always use software watchpoints."
+          "default": 2,
+          "description": "How many watchpoints may use hardware debug registers. Beyond this — and for any pointer-dereferencing expression (which GDB watches along its whole access path, using several registers) — new watchpoints are created as (slower) software watchpoints, so resuming doesn't fail with 'Couldn't insert hardware watchpoints: too many'. x86 has 4 registers but a single linked/grouped (->) watchpoint can consume several. Set higher for targets with more registers, or 0 to always use software."
         }
       }
     }

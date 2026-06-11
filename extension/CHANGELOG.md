@@ -2,6 +2,17 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.47.1] - 2026-06-11
+
+### Fixed
+- **Resume failing with even two watchpoints.** A watchpoint on a pointer‑dereferencing
+  expression (linked/grouped cells, `->`) makes GDB watch the whole access path,
+  consuming **several** hardware debug registers — so even two watchpoints could
+  exceed the 4‑register limit and abort *continue* with “Couldn't insert hardware
+  watchpoints.” Such expressions (and any beyond `maxHardwareWatchpoints`, now
+  default **2**) are now created as software watchpoints. (v0.47.0 only handled the
+  >4 count case; this is the real fix — reproduced and verified in GDB.)
+
 ## [0.47.0] - 2026-06-11
 
 ### Fixed
