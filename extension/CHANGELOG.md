@@ -2,6 +2,12 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.48.1] - 2026-06-11
+
+### Changed
+- Removed the help (question‑mark) cursor on the watchpoint **★** marker; it now uses
+  the normal cursor (the tooltip still appears on hover).
+
 ## [0.48.0] - 2026-06-11
 
 ### Changed

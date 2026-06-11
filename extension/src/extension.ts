@@ -1194,7 +1194,7 @@ function getHtml(): string {
   td.idcol { font-weight: 700; opacity: 0.9; }
   .dash { opacity: 0.4; }
   .dash.err { opacity: 0.9; color: var(--vscode-errorForeground, #e74c3c); cursor: help; }
-  .wp-star { color: #f1c40f; margin-right: 4px; font-size: 11px; cursor: help; }
+  .wp-star { color: #f1c40f; margin-right: 4px; font-size: 11px; }
   td[data-wp] { box-shadow: inset 2px 0 0 #f1c40f; }
   .grp-bar { margin: 10px 2px 6px; }
   .grp-toggle { font-size: 11px; }
