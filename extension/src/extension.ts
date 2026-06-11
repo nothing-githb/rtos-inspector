@@ -218,6 +218,20 @@ const REFRESH_DEBOUNCE_MS = 140;
 let activeTab: string | undefined;  // webview'in o anki aktif sekmesi -> refresh önce onu çeker, sekme değişince öncelik değişir
 let watchpoints: Record<string, number> = {};   // izlenen l-value ifadesi -> GDB watchpoint no (★ işareti + kaldırma için)
 function sendWatchpoints() { panel?.webview.postMessage({ type: 'watchpoints', exprs: Object.keys(watchpoints) }); }
+// GDB watchpoint numarasını 'info watchpoints'tan bul (cppdbg 'watch' çıktısında numarayı her zaman echo'lamaz).
+// Önce 'What' sütunu expr ile eşleşen satır; yoksa en yüksek numara (en son eklenen).
+async function findWatchNum(session: vscode.DebugSession, frameId: number | undefined, expr: string): Promise<number> {
+  const out = (await gdbExec(session, 'info watchpoints', frameId)).toString();
+  let best = NaN;
+  for (const ln of out.split(/\r?\n/)) {
+    const m = ln.match(/^\s*(\d+)\s+.*watchpoint/i);
+    if (!m) continue;
+    const num = parseInt(m[1], 10);
+    if (ln.includes(expr)) return num;
+    best = num;
+  }
+  return best;
+}
 
 // GDB işlem MUTEX'i: refresh / refreshTarget / refreshRow asla İÇ İÇE çalışmasın.
 // (Hepsi $ri_*/$rg_* convenience cursor'larını paylaşıyor; eşzamanlı akarlarsa biri diğerinin
@@ -967,18 +981,21 @@ function openPanel(context: vscode.ExtensionContext) {
         if (watchpoints[msg.expr] !== undefined) { sendWatchpoints(); return; }   // zaten izleniyor
         const res = (await gdbExec(lastStopped.session, `watch ${msg.expr}`, lastStopped.frameId)).toString().replace(/\s+/g, ' ').trim();
         log?.info(`watchpoint: watch ${msg.expr}  ⇒  ${res || 'ok'}`);
-        const num = res.match(/[Ww]atchpoint (\d+):/);
-        if (/no symbol|cannot|error|invalid|not (defined|available)|<<error/i.test(res) || !num)
+        if (/no symbol|cannot|invalid|<<error/i.test(res)) {
           vscode.window.showErrorMessage(`Debug Inspector: watchpoint failed — ${res}`);
-        else {
-          watchpoints[msg.expr] = parseInt(num[1], 10);   // expr -> GDB watchpoint no (kaldırmak için)
+        } else {
+          // HATA YOKSA izlenmiş işaretle (★) — numara parse'ına bağlı DEĞİL (cppdbg numarayı echo'lamayabilir).
+          const m = res.match(/[Ww]atchpoint (\d+):/);
+          let n = m ? parseInt(m[1], 10) : await findWatchNum(lastStopped.session, lastStopped.frameId, msg.expr);
+          watchpoints[msg.expr] = Number.isFinite(n) ? n : -1;   // -1: numara bulunamadı ama izleniyor
           sendWatchpoints();
-          vscode.window.showInformationMessage(`Debug Inspector: watchpoint #${num[1]} set on ${msg.expr} (program stops when it changes).`);
+          vscode.window.showInformationMessage(`Debug Inspector: watchpoint set on ${msg.expr}${Number.isFinite(n) ? ' (#' + n + ')' : ''} — program stops when it changes.`);
         }
       } else if (msg?.type === 'unwatchpoint' && typeof msg.expr === 'string' && msg.expr) {
-        // watchpoint'i kaldır (GDB 'delete <no>')
-        const n = watchpoints[msg.expr];
-        if (lastStopped && n !== undefined) await gdbExec(lastStopped.session, `delete ${n}`, lastStopped.frameId);
+        // watchpoint'i kaldır (GDB 'delete <no>'); numara bilinmiyorsa info watchpoints'tan bul
+        let n = watchpoints[msg.expr];
+        if (lastStopped && (n === undefined || !Number.isFinite(n) || n < 0)) n = await findWatchNum(lastStopped.session, lastStopped.frameId, msg.expr);
+        if (lastStopped && Number.isFinite(n) && n >= 0) await gdbExec(lastStopped.session, `delete ${n}`, lastStopped.frameId);
         delete watchpoints[msg.expr];
         sendWatchpoints();
         log?.info(`watchpoint removed: ${msg.expr} (#${n})`);

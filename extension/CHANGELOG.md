@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.46.2] - 2026-06-11
+
+### Fixed
+- **Watched ★ / hover now appears reliably.** The watched mark no longer depends on
+  parsing the watchpoint number out of GDB's `watch` reply (which `cppdbg` doesn't
+  always echo) — a cell is marked watched whenever `watch` doesn't error, and the
+  GDB watchpoint number is resolved from `info watchpoints` when needed for removal.
+
 ## [0.46.1] - 2026-06-11
 
 ### Changed
