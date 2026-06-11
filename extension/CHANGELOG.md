@@ -2,6 +2,26 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.50.0] - 2026-06-11
+
+### Added
+- **Draggable graph nodes.** Drag any card to reposition it; edges follow live, and the
+  placement is remembered (keyed by the row's identity, so it survives refreshes and
+  follows the row even if the underlying list reorders). Background drag still pans, a
+  short click still selects — a small movement threshold tells them apart.
+
+### Changed
+- **Better default graph layout (no more single tall column).**
+  - **Linked / index lists** now flow as a **serpentine grid** — cards wrap into rows
+    with alternating direction, so consecutive nodes stay adjacent and the chain uses
+    the width instead of growing straight down.
+  - **Grouped sections** now lay out as **per-group swimlane columns** (group label on
+    top, members in a compact mini-grid beneath) placed side by side, instead of one
+    tall stack of members.
+  - **Arrays** widen up to six columns for large sets.
+  - Graph edges are now direction-aware (a horizontal curve between same-row neighbours,
+    a vertical curve otherwise) for a cleaner read.
+
 ## [0.49.0] - 2026-06-11
 
 ### Added

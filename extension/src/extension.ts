@@ -1290,7 +1290,9 @@ function getHtml(): string {
     border-radius: 10px; cursor: grab; user-select: none;
   }
   .gv-svg.panning { cursor: grabbing; }
-  .gnode { cursor: pointer; transition: opacity 0.12s; }
+  .gnode { cursor: grab; transition: opacity 0.12s; }
+  .gnode.gv-dragging { cursor: grabbing; }
+  .gnode.gv-dragging .card { stroke: var(--vscode-focusBorder, #3b9eff); stroke-width: 2; }
   .gnode .card {
     fill: var(--vscode-editorWidget-background, rgba(128,128,128,0.10));
     stroke: var(--vscode-panel-border, rgba(128,128,128,0.4)); stroke-width: 1;
@@ -1823,52 +1825,70 @@ function getHtml(): string {
     for (var j = 0; j < cols.length; j++) { var bh = badgeHex(matchBadge(badges && badges[cols[j]], row[cols[j]])); if (bh) return bh; }
     return null;
   }
+  // Sürükle-konum kalıcılık anahtarı: KARARLI satır kimliği (ilk kolon değeri — değişiklik-vurgusuyla aynı),
+  // konumsal index değil -> liste yeniden sıralanınca taşınan konum doğru satırı izler (id'ye değil veriye bağlı)
+  function posKeyOf(r, cols, fallback) { var k = rowKeyOf(r, cols); return k !== '' ? k : fallback; }
   // Bölüm verisinden düğüm + kenar modeli (konumlar grafik koordinatında)
   function graphModel(st) {
     var sec = st.sec, cols = displayCols(st);
     var nodes = [], edges = [], capped = false;
     if (sec.grouped) {
-      var colL = GVPAD, colR = GVPAD + GVGROUPW + GVGX + 30, y = GVPAD + 22;
+      // her grup bir SÜTUN (kulvar): üstte grup etiketi, altında üyeler mini-ızgarada -> tek uzun yığın yok
+      var laneX = GVPAD, labelY = GVPAD + 22, memTop = labelY + GVGROUPH + GVGY;
       (sec.groups || []).forEach(function (g, gi) {
-        var ys = [], gy0 = y;
-        (g.rows || []).forEach(function (r, ri) {
+        var rws = g.rows || [];
+        var gper = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(rws.length || 1))));
+        var laneCols = gper;
+        var gkey = (g.key != null ? g.key : gi);
+        nodes.push({ id: 'g' + gi, group: true, label: g.label, count: rws.length, pkey: 'g:' + gkey, x: laneX + (laneCols * (GVW + GVGX) - GVGX - GVGROUPW) / 2, y: labelY, w: GVGROUPW, h: GVGROUPH });
+        rws.forEach(function (r, ri) {
           if (nodes.length >= GRAPH_MAX) { capped = true; return; }
-          nodes.push({ id: 'm' + gi + '_' + ri, row: r, x: colR, y: y, w: GVW, h: GVH, cols: cols });
+          var cc = ri % gper, rr = Math.floor(ri / gper);
+          nodes.push({ id: 'm' + gi + '_' + ri, row: r, pkey: 'm:' + gkey + ':' + posKeyOf(r, cols, String(ri)), x: laneX + cc * (GVW + GVGX), y: memTop + rr * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
           edges.push({ from: 'g' + gi, to: 'm' + gi + '_' + ri, type: 'grouped' });
-          ys.push(y); y += GVH + GVGY;
         });
-        if (!(g.rows || []).length) y += GVH;
-        var cy = ys.length ? (ys[0] + ys[ys.length - 1] + GVH) / 2 : gy0 + GVGROUPH / 2;
-        nodes.push({ id: 'g' + gi, group: true, label: g.label, count: (g.rows || []).length, x: colL, y: cy - GVGROUPH / 2, w: GVGROUPW, h: GVGROUPH });
-        y += GVGY + 10;
+        laneX += laneCols * (GVW + GVGX) + 24;
       });
     } else if (sec.kind === 'linked' || sec.kind === 'index') {
-      var yy = GVPAD + 22;
-      (sec.rows || []).forEach(function (r, ri) {
+      // serpentine (yılankavi) ızgara: tek uzun sütun yerine satırlara sarar, tek sıralar ters yönde -> komşular hep bitişik
+      var lrows = sec.rows || [];
+      var lper = Math.max(1, Math.min(6, Math.round(Math.sqrt(lrows.length * 1.3))));
+      lrows.forEach(function (r, ri) {
         if (nodes.length >= GRAPH_MAX) { capped = true; return; }
-        nodes.push({ id: 'n' + ri, row: r, x: GVPAD, y: yy, w: GVW, h: GVH, cols: cols });
+        var col = ri % lper, rowN = Math.floor(ri / lper);
+        var visCol = (rowN % 2 === 0) ? col : (lper - 1 - col);
+        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + visCol * (GVW + GVGX), y: GVPAD + 22 + rowN * (GVH + GVGY + 14), w: GVW, h: GVH, cols: cols });
         if (ri > 0) edges.push({ from: 'n' + (ri - 1), to: 'n' + ri, type: 'next' });
-        yy += GVH + GVGY;
       });
     } else {   // array: ızgara, kenar yok
-      var per = 4;
-      (sec.rows || []).forEach(function (r, ri) {
+      var arows = sec.rows || [];
+      var per = arows.length <= 16 ? 4 : Math.max(4, Math.min(6, Math.round(Math.sqrt(arows.length * 1.3))));
+      arows.forEach(function (r, ri) {
         if (nodes.length >= GRAPH_MAX) { capped = true; return; }
         var cxn = ri % per, cyn = Math.floor(ri / per);
-        nodes.push({ id: 'n' + ri, row: r, x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
+        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
       });
     }
+    // kullanıcının sürükleyip taşıdığı düğüm konumları (kalıcı) otomatik yerleşimi ezsin (kararlı pkey ile)
+    var saved = st.gv && st.gv.pos;
+    if (saved) nodes.forEach(function (n) { var p = saved[n.pkey]; if (p) { n.x = p.x; n.y = p.y; } });
     var byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
     var mx = 0, my = 0; nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
     return { nodes: nodes, edges: edges, byId: byId, capped: capped, cw: mx + GVPAD, ch: my + GVPAD };
   }
   function edgePath(a, b, type) {
-    if (type === 'next') {
-      var x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, my = (y1 + y2) / 2;
-      return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2;
+    if (type === 'next' || type === 'grouped') {
+      // aynı satırdaki serpentine komşular -> yatay S; farklı satır veya grouped -> dikey alt-üst S
+      if (type === 'next' && Math.abs(a.y - b.y) < a.h) {
+        var ax = a.x < b.x ? a.x + a.w : a.x, bx = a.x < b.x ? b.x : b.x + b.w;
+        var ay = a.y + a.h / 2, by = b.y + b.h / 2, hmx = (ax + bx) / 2;
+        return 'M' + ax + ',' + ay + ' C' + hmx + ',' + ay + ' ' + hmx + ',' + by + ' ' + bx + ',' + by;
+      }
+      var x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, vmy = (y1 + y2) / 2;
+      return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + vmy + ' ' + x2 + ',' + vmy + ' ' + x2 + ',' + y2;
     }
-    var X1 = a.x + a.w, Y1 = a.y + a.h / 2, X2 = b.x, Y2 = b.y + b.h / 2, mx = (X1 + X2) / 2;
-    return 'M' + X1 + ',' + Y1 + ' C' + mx + ',' + Y1 + ' ' + mx + ',' + Y2 + ' ' + X2 + ',' + Y2;
+    var X1 = a.x + a.w, Y1 = a.y + a.h / 2, X2 = b.x, Y2 = b.y + b.h / 2, gmx = (X1 + X2) / 2;
+    return 'M' + X1 + ',' + Y1 + ' C' + gmx + ',' + Y1 + ' ' + gmx + ',' + Y2 + ' ' + X2 + ',' + Y2;
   }
   function nodeSvg(n, badges, bars) {
     if (n.group) {
@@ -1925,7 +1945,24 @@ function getHtml(): string {
     var st = secState[name];
     var svg = document.getElementById('gsvg-' + idx), vp = document.getElementById('gvp-' + idx), det = document.getElementById('gdet-' + idx);
     if (!svg || !vp) return;
-    st.gv = st.gv || { sc: 1, tx: 0, ty: 0, sel: null, needFit: true };
+    st.gv = st.gv || { sc: 1, tx: 0, ty: 0, sel: null, needFit: true, pos: {} };
+    st.gv.pos = st.gv.pos || {};
+    var nd = null, suppressClick = false;   // nd = sürüklenen düğüm; suppressClick = sürükleme sonrası tıklamayı yut
+    var edgeEls = vp.querySelectorAll('.gedge');
+    function redrawEdges(movedId) {
+      if (!edgeEls || !edgeEls.forEach) return;   // DOM-shim: boş NodeList -> güvenli no-op
+      edgeEls.forEach(function (p) {
+        var f = p.getAttribute('data-f'), t = p.getAttribute('data-t');
+        if (f !== movedId && t !== movedId) return;
+        var a = model.byId[f], b = model.byId[t]; if (!a || !b) return;
+        p.setAttribute('d', edgePath(a, b, p.classList.contains('grouped') ? 'grouped' : 'next'));
+      });
+    }
+    function recomputeBounds() {   // sürükleme sonrası Fit doğru çerçevelesin (re-render olmadan)
+      var mx = 0, my = 0;
+      model.nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
+      model.cw = mx + GVPAD; model.ch = my + GVPAD;
+    }
     function apply() { vp.setAttribute('transform', 'translate(' + st.gv.tx + ',' + st.gv.ty + ') scale(' + st.gv.sc + ')'); }
     function fit() {
       var sw = svg.clientWidth, sh = svg.clientHeight;
@@ -1954,7 +1991,7 @@ function getHtml(): string {
     function selectNode(id) { st.gv.sel = id; vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.toggle('sel', g.getAttribute('data-id') === id); }); focus(id); detailFor(id); }
     vp.addEventListener('mouseover', function (e) { var g = e.target.closest('.gnode'); if (g && !st.gv.sel) focus(g.getAttribute('data-id')); });
     vp.addEventListener('mouseout', function () { if (!st.gv.sel) clearFocus(); });
-    vp.addEventListener('click', function (e) { var g = e.target.closest('.gnode'); if (!g) return; e.stopPropagation(); selectNode(g.getAttribute('data-id')); });
+    vp.addEventListener('click', function (e) { if (suppressClick) { suppressClick = false; return; } var g = e.target.closest('.gnode'); if (!g) return; e.stopPropagation(); selectNode(g.getAttribute('data-id')); });
     var dc = document.getElementById('gdc-' + idx);
     if (dc) dc.addEventListener('click', function (e) { e.stopPropagation(); st.gv.sel = null; det.style.display = 'none'; clearFocus(); vp.querySelectorAll('.gnode.sel').forEach(function (g) { g.classList.remove('sel'); }); });
     svg.addEventListener('wheel', function (e) {
@@ -1964,9 +2001,42 @@ function getHtml(): string {
       st.gv.tx = px - (px - st.gv.tx) * (ns / st.gv.sc); st.gv.ty = py - (py - st.gv.ty) * (ns / st.gv.sc); st.gv.sc = ns; apply();
     }, { passive: false });
     var dragging = false, lx = 0, ly = 0;
-    svg.addEventListener('mousedown', function (e) { if (e.target.closest('.gnode')) return; dragging = true; lx = e.clientX; ly = e.clientY; svg.classList.add('panning'); });
-    svg.addEventListener('mousemove', function (e) { if (!dragging) return; st.gv.tx += e.clientX - lx; st.gv.ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply(); });
-    function endPan() { dragging = false; svg.classList.remove('panning'); }
+    svg.addEventListener('mousedown', function (e) {
+      suppressClick = false;   // önceki etkileşimden kalan bastırmayı temizle
+      var g = e.target.closest ? e.target.closest('.gnode') : null;
+      if (g) {   // DÜĞÜM sürükle (arka plan pan'i değil)
+        var id = g.getAttribute('data-id'), n = model.byId[id]; if (!n) return;
+        e.stopPropagation();
+        nd = { id: id, g: g, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false };
+        g.classList.add('gv-dragging');
+        return;
+      }
+      dragging = true; lx = e.clientX; ly = e.clientY; svg.classList.add('panning');
+    });
+    svg.addEventListener('mousemove', function (e) {
+      if (nd) {   // düğüm sürükleniyor: delta / sc ile 1:1 takip, bağlı kenarları canlı çiz
+        var n = model.byId[nd.id]; if (!n) return;
+        if (!nd.moved && (Math.abs(e.clientX - nd.sx) + Math.abs(e.clientY - nd.sy)) > 3) nd.moved = true;
+        if (!nd.moved) return;
+        n.x = Math.max(0, nd.ox + (e.clientX - nd.sx) / st.gv.sc);
+        n.y = Math.max(0, nd.oy + (e.clientY - nd.sy) / st.gv.sc);
+        nd.g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+        redrawEdges(nd.id);
+        return;
+      }
+      if (!dragging) return; st.gv.tx += e.clientX - lx; st.gv.ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply();
+    });
+    function endPan() {
+      if (nd) {
+        if (nd.moved) {
+          var n = model.byId[nd.id];
+          if (n) st.gv.pos[n.pkey] = { x: n.x, y: n.y };   // taşınan konumu KARARLI satır kimliğiyle sakla (yeniden sıralamaya dayanıklı)
+          suppressClick = true; recomputeBounds();
+        }
+        nd.g.classList.remove('gv-dragging'); nd = null;
+      }
+      dragging = false; svg.classList.remove('panning');
+    }
     svg.addEventListener('mouseup', endPan); svg.addEventListener('mouseleave', endPan);
     st._fit = fit;
     if (st.gv.sel && model.byId[st.gv.sel]) selectNode(st.gv.sel); else st.gv.sel = st.gv.sel && model.byId[st.gv.sel] ? st.gv.sel : null;
@@ -2152,7 +2222,7 @@ function getHtml(): string {
     // tablo <-> graph görünüm geçişi
     if (e.target.closest('.view-toggle')) {
       const name = paneName(e); const st = secState[name];
-      if (st) { st.view = st.view === 'graph' ? 'table' : 'graph'; if (st.view === 'graph' && !st.gv) st.gv = { sc: 1, tx: 0, ty: 0, sel: null, needFit: true }; paint(name); }
+      if (st) { st.view = st.view === 'graph' ? 'table' : 'graph'; if (st.view === 'graph' && !st.gv) st.gv = { sc: 1, tx: 0, ty: 0, sel: null, needFit: true, pos: {} }; paint(name); }
       return;
     }
     // graph: görünüme sığdır
