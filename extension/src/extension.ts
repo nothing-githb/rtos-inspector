@@ -1682,8 +1682,11 @@ function getHtml(): string {
       const lv = (row['__lv__' + c] != null) ? row['__lv__' + c] : ed;   // watchpoint hedefi (düz üye l-value, ya da editable)
       const editAttr = (ed != null) ? ' data-edit="' + esc(ed) + '" data-col="' + esc(c) + '"' : '';
       const lvAttr = (lv != null) ? ' data-lv="' + esc(lv) + '"' : '';
-      const star = (lv != null && watchedExprs.has(lv)) ? '<span class="wp-star" title="watchpoint set — break on change">★</span>' : '';
-      h += '<td' + clsAttr + editAttr + lvAttr + (star ? ' data-wp="1"' : '') + ' title="' + esc(raw) + '">' + star + inner + '</td>';
+      const watched = (lv != null && watchedExprs.has(lv));
+      const star = watched ? '<span class="wp-star" title="watchpoint set — break on change">★</span>' : '';
+      // hover (tooltip): izlenen hücrede watchpoint olduğunu da belirt
+      const ttl = esc(raw) + (watched ? ' — ★ watchpoint set (break on change)' : '');
+      h += '<td' + clsAttr + editAttr + lvAttr + (watched ? ' data-wp="1"' : '') + ' title="' + ttl + '">' + star + inner + '</td>';
     }
     return h + '</tr>';
   }

@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.46.1] - 2026-06-11
+
+### Changed
+- **Watched-cell hover hint.** Hovering a cell that has a watchpoint now shows
+  “*value* — ★ watchpoint set (break on change)” in its tooltip, in addition to the
+  ★ marker.
+
 ## [0.46.0] - 2026-06-11
 
 ### Added
