@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.46.0] - 2026-06-11
+
+### Added
+- **Watched cells are starred, with a Remove option.** After **Add watchpoint**, the
+  cell shows a gold **★** (plus a left accent) and its right‑click menu switches to
+  **★ Remove watchpoint** (runs GDB `delete <n>`). The extension tracks each watched
+  l‑value → GDB watchpoint number, broadcasts the set so the stars survive refreshes,
+  and clears them when the debug session ends.
+
 ## [0.45.0] - 2026-06-11
 
 ### Added

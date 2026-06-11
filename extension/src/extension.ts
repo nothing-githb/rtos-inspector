@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
       const tracked = lastStopped?.session;
       if (tracked && tracked !== s) return;   // bizim izlediğimiz oturum değil -> dokunma
       log?.info('debug session terminated → closing panel');
-      lastStopped = undefined; printSetupFor = undefined; cancelRefresh();
+      lastStopped = undefined; printSetupFor = undefined; watchpoints = {}; cancelRefresh();
       panel.dispose();   // onDidDispose -> panel = undefined
     })
   );
@@ -216,6 +216,8 @@ let pendingRefresh = false;
 let refreshGen = 0;                 // her istek artar; refresh bunu izleyip eskiyi iptal eder
 const REFRESH_DEBOUNCE_MS = 140;
 let activeTab: string | undefined;  // webview'in o anki aktif sekmesi -> refresh önce onu çeker, sekme değişince öncelik değişir
+let watchpoints: Record<string, number> = {};   // izlenen l-value ifadesi -> GDB watchpoint no (★ işareti + kaldırma için)
+function sendWatchpoints() { panel?.webview.postMessage({ type: 'watchpoints', exprs: Object.keys(watchpoints) }); }
 
 // GDB işlem MUTEX'i: refresh / refreshTarget / refreshRow asla İÇ İÇE çalışmasın.
 // (Hepsi $ri_*/$rg_* convenience cursor'larını paylaşıyor; eşzamanlı akarlarsa biri diğerinin
@@ -886,6 +888,7 @@ async function refresh(session: vscode.DebugSession, threadId: number, gen?: num
 
   // iskeleti hazırla (ts + layout + kaldırılanları temizle); bölümler aşağıda ÖNCELİKLİ akışla gelir
   panel.webview.postMessage({ type: 'beginUpdate', order, visible, hiddenSections: order.filter(n => hiddenSet.has(n)), ts });
+  sendWatchpoints();   // webview izlenen hücreleri ★ ile işaretlesin (yenileme sonrası da korunur)
 
   // master cache (grouped bölümlerin bağımlılığı); görünür bir master kurulunca hemen gönderilir
   const masters: Record<string, { sec: Section; selExprs: string[]; cfg: SectionCfg }> = {};
@@ -961,12 +964,25 @@ function openPanel(context: vscode.ExtensionContext) {
       } else if (msg?.type === 'watchpoint' && typeof msg.expr === 'string' && msg.expr) {
         // GDB veri-watchpoint'i: değer değişince program durur (bellek YAZMAZ; sadece break davranışı). Opt-in (sağ-tık).
         if (!lastStopped) { vscode.window.showWarningMessage('Debug Inspector: debugger not stopped — cannot set a watchpoint.'); return; }
+        if (watchpoints[msg.expr] !== undefined) { sendWatchpoints(); return; }   // zaten izleniyor
         const res = (await gdbExec(lastStopped.session, `watch ${msg.expr}`, lastStopped.frameId)).toString().replace(/\s+/g, ' ').trim();
         log?.info(`watchpoint: watch ${msg.expr}  ⇒  ${res || 'ok'}`);
-        if (/no symbol|cannot|error|invalid|not (defined|available)|<<error/i.test(res))
+        const num = res.match(/[Ww]atchpoint (\d+):/);
+        if (/no symbol|cannot|error|invalid|not (defined|available)|<<error/i.test(res) || !num)
           vscode.window.showErrorMessage(`Debug Inspector: watchpoint failed — ${res}`);
-        else
-          vscode.window.showInformationMessage(`Debug Inspector: watchpoint set on ${msg.expr}${res ? ' — ' + res : ''} (program stops when it changes; remove it from GDB/Breakpoints).`);
+        else {
+          watchpoints[msg.expr] = parseInt(num[1], 10);   // expr -> GDB watchpoint no (kaldırmak için)
+          sendWatchpoints();
+          vscode.window.showInformationMessage(`Debug Inspector: watchpoint #${num[1]} set on ${msg.expr} (program stops when it changes).`);
+        }
+      } else if (msg?.type === 'unwatchpoint' && typeof msg.expr === 'string' && msg.expr) {
+        // watchpoint'i kaldır (GDB 'delete <no>')
+        const n = watchpoints[msg.expr];
+        if (lastStopped && n !== undefined) await gdbExec(lastStopped.session, `delete ${n}`, lastStopped.frameId);
+        delete watchpoints[msg.expr];
+        sendWatchpoints();
+        log?.info(`watchpoint removed: ${msg.expr} (#${n})`);
+        vscode.window.showInformationMessage(`Debug Inspector: watchpoint removed — ${msg.expr}`);
       } else if (msg?.type === 'copyWatch' && typeof msg.text === 'string' && msg.text) {
         // VS Code'da watch ifadesi EKLEMEK için public API yok -> panoya kopyala, kullanıcı Watch'a yapıştırır
         vscode.env.clipboard.writeText(msg.text);
@@ -1147,6 +1163,8 @@ function getHtml(): string {
   td.idcol { font-weight: 700; opacity: 0.9; }
   .dash { opacity: 0.4; }
   .dash.err { opacity: 0.9; color: var(--vscode-errorForeground, #e74c3c); cursor: help; }
+  .wp-star { color: #f1c40f; margin-right: 4px; font-size: 11px; cursor: help; }
+  td[data-wp] { box-shadow: inset 2px 0 0 #f1c40f; }
   .grp-bar { margin: 10px 2px 6px; }
   .grp-toggle { font-size: 11px; }
   tr.grphdr td {
@@ -1259,6 +1277,7 @@ function getHtml(): string {
 
   const secState = {};       // name -> {sec, sortCol, sortDir, changed, changeCount, order, hidden}
   let currentNames = [];     // görünür sekme adları (DOM index'leriyle eşleşir)
+  let watchedExprs = new Set();   // watchpoint kurulu l-value ifadeleri (★ + menüde Add/Remove)
   let hiddenSections = [];   // gizli sekme adları (Sections menüsünden açılabilir)
   let sectionOrder = [];     // TEK interleaved sıra (görünür+gizli), gerçek konumda
   let activeName = null;
@@ -1663,7 +1682,8 @@ function getHtml(): string {
       const lv = (row['__lv__' + c] != null) ? row['__lv__' + c] : ed;   // watchpoint hedefi (düz üye l-value, ya da editable)
       const editAttr = (ed != null) ? ' data-edit="' + esc(ed) + '" data-col="' + esc(c) + '"' : '';
       const lvAttr = (lv != null) ? ' data-lv="' + esc(lv) + '"' : '';
-      h += '<td' + clsAttr + editAttr + lvAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
+      const star = (lv != null && watchedExprs.has(lv)) ? '<span class="wp-star" title="watchpoint set — break on change">★</span>' : '';
+      h += '<td' + clsAttr + editAttr + lvAttr + (star ? ' data-wp="1"' : '') + ' title="' + esc(raw) + '">' + star + inner + '</td>';
     }
     return h + '</tr>';
   }
@@ -1840,6 +1860,8 @@ function getHtml(): string {
     if (cw) { vscodeApi.postMessage({ type: 'copyWatch', text: cw.dataset.el || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const wp = e.target.closest('.cell-wp');
     if (wp) { vscodeApi.postMessage({ type: 'watchpoint', expr: wp.dataset.lv || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
+    const uwp = e.target.closest('.cell-unwp');
+    if (uwp) { vscodeApi.postMessage({ type: 'unwatchpoint', expr: uwp.dataset.lv || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const ce = e.target.closest('.cell-edit');
     if (ce) {
       const riAttr = ce.dataset.ri;
@@ -2054,8 +2076,12 @@ function getHtml(): string {
       const trEl = td.closest('tr');
       if (trEl && trEl.dataset.el)   // satırın kararlı eleman ifadesini watch için kopyala (VS Code Watch'a yapıştır)
         h += '<div class="cm-item cell-watch" data-el="' + esc(trEl.dataset.el) + '">Copy row as watch expression</div>';
-      if (td.dataset.lv)   // bu hücrenin alanına GDB watchpoint'i (değer değişince durdurur)
-        h += '<div class="cm-item cell-wp" data-lv="' + esc(td.dataset.lv) + '">Add watchpoint (break on change)</div>';
+      if (td.dataset.lv) {   // bu hücrenin alanına GDB watchpoint'i (değer değişince durdurur)
+        if (watchedExprs.has(td.dataset.lv))
+          h += '<div class="cm-item cell-unwp" data-lv="' + esc(td.dataset.lv) + '">★ Remove watchpoint</div>';
+        else
+          h += '<div class="cm-item cell-wp" data-lv="' + esc(td.dataset.lv) + '">Add watchpoint (break on change)</div>';
+      }
       if (td.dataset.edit) {
         const tr = td.closest('tr');
         const ri = (tr && tr.dataset.ri != null) ? tr.dataset.ri : '';
@@ -2268,6 +2294,9 @@ function getHtml(): string {
       const chEl = document.getElementById('changes');
       if (changed > 0) { chEl.textContent = changed + ' changed'; chEl.classList.remove('hidden'); }
       else chEl.classList.add('hidden');
+    } else if (m.type === 'watchpoints') {
+      watchedExprs = new Set(Array.isArray(m.exprs) ? m.exprs : []);   // izlenen l-value'lar -> ★ + menü Add/Remove
+      for (const n of currentNames) if (secState[n] && secState[n].sec) paint(n);
     } else if (m.type === 'running') {
       if (!paused) { statusEl.textContent = 'running…'; statusEl.className = 'pill run'; }
       setRefreshing(false); clearAllUpdating(); if (refreshFallback) { clearTimeout(refreshFallback); refreshFallback = null; }   // iptal edilen refresh'in spinner'larını da temizle
