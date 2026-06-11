@@ -478,6 +478,8 @@ async function collectRowFields(
       if (f.wrap) editExpr = f.wrap.split('${expr}').join('(' + editExpr + ')');
       row['__edit__' + f.label] = editExpr;
     }
+    // __lv__ = düz üye alanının KARARLI l-value'su (watchpoint hedefi: 'watch <lvalue>'). Sadece düz üye (computed/wrap değil).
+    if (isPlainExpr(f.expr) && !f.wrap) row['__lv__' + f.label] = resolveFieldExpr(f.expr, editRaw, editWrap, access);
     if (f.bar) {
       const mx = barMaxExpr(f);
       if (mx) row['__bar__' + f.label] = /^\d+$/.test(mx) ? mx : cleanValue(await gdbExec(session, `print ${resolveFieldExpr(mx, rawElem, wrapElem, access)}`, frameId));
@@ -956,6 +958,15 @@ function openPanel(context: vscode.ExtensionContext) {
       } else if (msg?.type === 'copy' && typeof msg.text === 'string') {
         vscode.env.clipboard.writeText(msg.text);
         log?.debug(`webview: copied ${msg.text.length} chars to clipboard`);
+      } else if (msg?.type === 'watchpoint' && typeof msg.expr === 'string' && msg.expr) {
+        // GDB veri-watchpoint'i: değer değişince program durur (bellek YAZMAZ; sadece break davranışı). Opt-in (sağ-tık).
+        if (!lastStopped) { vscode.window.showWarningMessage('Debug Inspector: debugger not stopped — cannot set a watchpoint.'); return; }
+        const res = (await gdbExec(lastStopped.session, `watch ${msg.expr}`, lastStopped.frameId)).toString().replace(/\s+/g, ' ').trim();
+        log?.info(`watchpoint: watch ${msg.expr}  ⇒  ${res || 'ok'}`);
+        if (/no symbol|cannot|error|invalid|not (defined|available)|<<error/i.test(res))
+          vscode.window.showErrorMessage(`Debug Inspector: watchpoint failed — ${res}`);
+        else
+          vscode.window.showInformationMessage(`Debug Inspector: watchpoint set on ${msg.expr}${res ? ' — ' + res : ''} (program stops when it changes; remove it from GDB/Breakpoints).`);
       } else if (msg?.type === 'copyWatch' && typeof msg.text === 'string' && msg.text) {
         // VS Code'da watch ifadesi EKLEMEK için public API yok -> panoya kopyala, kullanıcı Watch'a yapıştırır
         vscode.env.clipboard.writeText(msg.text);
@@ -1649,8 +1660,10 @@ function getHtml(): string {
         inner += '<span class="old" title="previous value">' + esc(ov) + '</span>';
       }
       const ed = row['__edit__' + c];
+      const lv = (row['__lv__' + c] != null) ? row['__lv__' + c] : ed;   // watchpoint hedefi (düz üye l-value, ya da editable)
       const editAttr = (ed != null) ? ' data-edit="' + esc(ed) + '" data-col="' + esc(c) + '"' : '';
-      h += '<td' + clsAttr + editAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
+      const lvAttr = (lv != null) ? ' data-lv="' + esc(lv) + '"' : '';
+      h += '<td' + clsAttr + editAttr + lvAttr + ' title="' + esc(raw) + '">' + inner + '</td>';
     }
     return h + '</tr>';
   }
@@ -1825,6 +1838,8 @@ function getHtml(): string {
     if (cc) { vscodeApi.postMessage({ type: 'copy', text: cc.dataset.text || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const cw = e.target.closest('.cell-watch');
     if (cw) { vscodeApi.postMessage({ type: 'copyWatch', text: cw.dataset.el || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
+    const wp = e.target.closest('.cell-wp');
+    if (wp) { vscodeApi.postMessage({ type: 'watchpoint', expr: wp.dataset.lv || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const ce = e.target.closest('.cell-edit');
     if (ce) {
       const riAttr = ce.dataset.ri;
@@ -2039,6 +2054,8 @@ function getHtml(): string {
       const trEl = td.closest('tr');
       if (trEl && trEl.dataset.el)   // satırın kararlı eleman ifadesini watch için kopyala (VS Code Watch'a yapıştır)
         h += '<div class="cm-item cell-watch" data-el="' + esc(trEl.dataset.el) + '">Copy row as watch expression</div>';
+      if (td.dataset.lv)   // bu hücrenin alanına GDB watchpoint'i (değer değişince durdurur)
+        h += '<div class="cm-item cell-wp" data-lv="' + esc(td.dataset.lv) + '">Add watchpoint (break on change)</div>';
       if (td.dataset.edit) {
         const tr = td.closest('tr');
         const ri = (tr && tr.dataset.ri != null) ? tr.dataset.ri : '';

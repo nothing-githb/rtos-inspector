@@ -2,6 +2,16 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.45.0] - 2026-06-11
+
+### Added
+- **Add a watchpoint from a cell.** Right‑click a plain‑member (or editable) cell →
+  **Add watchpoint (break on change)** sets a GDB data watchpoint (`watch <lvalue>`)
+  on that field, so the program stops when the value changes. It doesn't write
+  memory; remove it from the GDB session / Breakpoints view when done. Offered only
+  for fields that are real l‑values (not computed/wrapped expressions). The stable
+  l‑value works in every mode incl. grouped sections.
+
 ## [0.44.0] - 2026-06-11
 
 ### Added
