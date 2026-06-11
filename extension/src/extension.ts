@@ -43,6 +43,7 @@ interface Section {
   needsSelection?: boolean;   // gruplu bölüm: master bölüm boş/bulunamadı
   grouped?: boolean;          // groupBy ile ağaç olarak gruplanmış
   groups?: Group[];           // her master elemanı için bir grup
+  kind?: 'linked' | 'array' | 'index';   // graph view: zincir (next) vs ızgara (array) yerleşimi
 }
 interface ColPref { order: string[]; hidden: string[]; }
 
@@ -753,7 +754,8 @@ async function buildSection(
     .filter((f): f is FieldCfg => !!f);
   const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor, name, isStale);
   log?.debug(`section "${name}" (${cfg.mode}, root=${cfg.root}): ${rows.length} row(s); active=[${eff.active.join(', ')}]`);
-  return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields), badges: fieldBadges(cfg.fields) };
+  const kind: 'linked' | 'array' | 'index' = cfg.mode === 'array' ? 'array' : cfg.mode === 'index_list' ? 'index' : 'linked';
+  return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields), badges: fieldBadges(cfg.fields), kind };
 }
 
 // ---------------------------------------------------------------------------
@@ -1278,6 +1280,48 @@ function getHtml(): string {
     white-space: nowrap;
   }
   .tab.haschg .badge-count { background: #f1c40f; color: #1e1e1e; }
+
+  /* ---- Graph view (Phase 1) ---- */
+  .gv-wrap { position: relative; margin-top: 4px; }
+  .gv-svg {
+    width: 100%; height: 70vh; min-height: 340px; display: block;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
+    border-radius: 10px; cursor: grab; user-select: none;
+  }
+  .gv-svg.panning { cursor: grabbing; }
+  .gnode { cursor: pointer; transition: opacity 0.12s; }
+  .gnode .card {
+    fill: var(--vscode-editorWidget-background, rgba(128,128,128,0.10));
+    stroke: var(--vscode-panel-border, rgba(128,128,128,0.4)); stroke-width: 1;
+    transition: stroke 0.12s;
+  }
+  .gnode:hover .card, .gnode.sel .card { stroke: var(--vscode-focusBorder, #3b9eff); }
+  .gnode.sel .card { stroke-width: 2; }
+  .gnode.gv-group .card { fill: var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.18)); }
+  .gnode .gtitle { fill: var(--vscode-foreground); font-size: 12.5px; font-weight: 600; }
+  .gnode .gsub { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 10.5px; }
+  .gnode.dim { opacity: 0.16; }
+  .gedge { fill: none; stroke: #7d8590; stroke-width: 1.5; transition: opacity 0.12s, stroke 0.12s, stroke-width 0.12s; }
+  .gedge.dim { opacity: 0.1; }
+  .gedge.ehl { stroke: #3b9eff; stroke-width: 2.5; }
+  .ghdr { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .gbarbg { fill: rgba(128,128,128,0.24); }
+  .gpct { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 9.5px; }
+  .gv-detail {
+    position: absolute; top: 12px; right: 12px; width: 232px; max-height: calc(100% - 28px); overflow: auto;
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,0.4)));
+    border-radius: 9px; padding: 11px 13px; font-size: 12px; display: none;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+  }
+  .gv-detail h3 { margin: 0 0 7px; font-size: 13px; padding-right: 14px; word-break: break-all; }
+  .gv-detail .grow2 { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; color: var(--vscode-descriptionForeground, #8a8a8a); }
+  .gv-detail .grow2 b { color: var(--vscode-foreground); font-weight: 500; word-break: break-all; text-align: right; }
+  .gv-detail .close { position: absolute; top: 7px; right: 10px; cursor: pointer; opacity: 0.6; }
+  .gv-detail .close:hover { opacity: 1; }
+  .gv-banner { font-size: 11px; opacity: 0.7; margin: 6px 2px; }
+  .gv-empty { opacity: 0.55; padding: 28px 4px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -1559,10 +1603,19 @@ function getHtml(): string {
   // --- araç çubuğu (filtre / changed-only / kopya); sayı tabanı artık per-kolon (▦ Columns) ---
   function toolbarHtml(st) {
     let h = '<div class="tbl-bar">';
+    if (st.view === 'graph') {
+      h += '<button class="btn view-toggle" title="Switch back to the table view">▤ Table</button>';
+      h += '<button class="btn graph-fit" title="Fit the graph to the view">⤢ Fit</button>';
+      h += '<span class="grow"></span>';
+      h += '<button class="btn cols-btn" title="Show / hide / reorder the fields shown on cards">▦ Fields</button>';
+      h += '</div>';
+      return h;
+    }
     h += '<input class="tbl-filter" type="text" placeholder="Filter rows…" value="' + esc(st.filter || '') + '">';
     if (st.sec.grouped) h += '<button class="btn grp-toggle">' + (st.flat ? '⊞ Tree' : '☰ Flat') + '</button>';
     else if (st.changeCount > 0) h += '<button class="btn chg-only' + (st.changedOnly ? ' on' : '') + '" title="Show only changed rows">Δ Changed</button>';
     h += '<span class="grow"></span>';
+    h += '<button class="btn view-toggle" title="Show this section as a node graph">◉ Graph</button>';
     h += '<button class="btn cols-btn" title="Show / hide / reorder columns">▦ Columns</button>';
     h += '<button class="btn copy-csv" title="Copy table as CSV">⧉ CSV</button>';
     h += '<button class="btn copy-md" title="Copy table as Markdown">⧉ MD</button>';
@@ -1757,6 +1810,168 @@ function getHtml(): string {
     return st.order.filter(l => st.hidden.indexOf(l) === -1);
   }
 
+  // ===== Graph view (Phase 1: tek section) — linked/index zinciri · grouped ağaç · array ızgara =====
+  var GVW = 196, GVH = 62, GVGY = 18, GVGX = 64, GVPAD = 22, GVGROUPW = 188, GVGROUPH = 40, GRAPH_MAX = 400;
+  function shortVal(v) { var s = String(v == null ? '' : v); var m = s.match(/"([^"]*)"/); return m ? m[1] : s; }
+  function stateHex(sc) { return sc === 's-run' ? '#2ecc71' : sc === 's-ready' ? '#3498db' : sc === 's-block' ? '#e74c3c' : sc === 's-wait' ? '#f1c40f' : null; }
+  // Düğüm rengi: önce 'state/durum' kolonu, sonra config-driven rozet eşleşmesi
+  function nodeColor(row, cols, badges) {
+    for (var i = 0; i < cols.length; i++) {
+      var lc = String(cols[i]).toLowerCase();
+      if (lc.indexOf('state') !== -1 || lc.indexOf('durum') !== -1) { var h = stateHex(stateClass(row[cols[i]])); if (h) return h; }
+    }
+    for (var j = 0; j < cols.length; j++) { var bh = badgeHex(matchBadge(badges && badges[cols[j]], row[cols[j]])); if (bh) return bh; }
+    return null;
+  }
+  // Bölüm verisinden düğüm + kenar modeli (konumlar grafik koordinatında)
+  function graphModel(st) {
+    var sec = st.sec, cols = displayCols(st);
+    var nodes = [], edges = [], capped = false;
+    if (sec.grouped) {
+      var colL = GVPAD, colR = GVPAD + GVGROUPW + GVGX + 30, y = GVPAD + 22;
+      (sec.groups || []).forEach(function (g, gi) {
+        var ys = [], gy0 = y;
+        (g.rows || []).forEach(function (r, ri) {
+          if (nodes.length >= GRAPH_MAX) { capped = true; return; }
+          nodes.push({ id: 'm' + gi + '_' + ri, row: r, x: colR, y: y, w: GVW, h: GVH, cols: cols });
+          edges.push({ from: 'g' + gi, to: 'm' + gi + '_' + ri, type: 'grouped' });
+          ys.push(y); y += GVH + GVGY;
+        });
+        if (!(g.rows || []).length) y += GVH;
+        var cy = ys.length ? (ys[0] + ys[ys.length - 1] + GVH) / 2 : gy0 + GVGROUPH / 2;
+        nodes.push({ id: 'g' + gi, group: true, label: g.label, count: (g.rows || []).length, x: colL, y: cy - GVGROUPH / 2, w: GVGROUPW, h: GVGROUPH });
+        y += GVGY + 10;
+      });
+    } else if (sec.kind === 'linked' || sec.kind === 'index') {
+      var yy = GVPAD + 22;
+      (sec.rows || []).forEach(function (r, ri) {
+        if (nodes.length >= GRAPH_MAX) { capped = true; return; }
+        nodes.push({ id: 'n' + ri, row: r, x: GVPAD, y: yy, w: GVW, h: GVH, cols: cols });
+        if (ri > 0) edges.push({ from: 'n' + (ri - 1), to: 'n' + ri, type: 'next' });
+        yy += GVH + GVGY;
+      });
+    } else {   // array: ızgara, kenar yok
+      var per = 4;
+      (sec.rows || []).forEach(function (r, ri) {
+        if (nodes.length >= GRAPH_MAX) { capped = true; return; }
+        var cxn = ri % per, cyn = Math.floor(ri / per);
+        nodes.push({ id: 'n' + ri, row: r, x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
+      });
+    }
+    var byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
+    var mx = 0, my = 0; nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
+    return { nodes: nodes, edges: edges, byId: byId, capped: capped, cw: mx + GVPAD, ch: my + GVPAD };
+  }
+  function edgePath(a, b, type) {
+    if (type === 'next') {
+      var x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, my = (y1 + y2) / 2;
+      return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2;
+    }
+    var X1 = a.x + a.w, Y1 = a.y + a.h / 2, X2 = b.x, Y2 = b.y + b.h / 2, mx = (X1 + X2) / 2;
+    return 'M' + X1 + ',' + Y1 + ' C' + mx + ',' + Y1 + ' ' + mx + ',' + Y2 + ' ' + X2 + ',' + Y2;
+  }
+  function nodeSvg(n, badges, bars) {
+    if (n.group) {
+      return '<g class="gnode gv-group" data-id="' + esc(n.id) + '" transform="translate(' + n.x + ',' + n.y + ')">' +
+        '<rect class="card" width="' + n.w + '" height="' + n.h + '" rx="8"></rect>' +
+        '<text class="gtitle" x="12" y="' + (n.h / 2 + 4) + '">' + esc(shortVal(n.label)) + '</text>' +
+        '<text class="gsub" x="' + (n.w - 12) + '" y="' + (n.h / 2 + 4) + '" text-anchor="end">' + n.count + '</text>' +
+        '</g>';
+    }
+    var row = n.row, cols = n.cols, color = nodeColor(row, cols, badges);
+    var title = cols.length ? shortVal(row[cols[0]]) : '';
+    var fcols = cols.slice(1, 3);
+    var s = '<g class="gnode" data-id="' + esc(n.id) + '" transform="translate(' + n.x + ',' + n.y + ')">';
+    s += '<rect class="card" width="' + n.w + '" height="' + n.h + '" rx="8"></rect>';
+    if (color) s += '<rect x="0" y="0" width="4" height="' + n.h + '" rx="2" fill="' + color + '"></rect>';
+    s += '<text class="gtitle" x="14" y="20">' + esc(title) + '</text>';
+    if (color) s += '<circle cx="' + (n.w - 14) + '" cy="15" r="5" fill="' + color + '"></circle>';
+    var subTxt = fcols.map(function (c) { return esc(c) + ' ' + esc(shortVal(row[c])); }).join('   ·   ');
+    if (subTxt) s += '<text class="gsub" x="14" y="37">' + subTxt + '</text>';
+    var barCol = null; for (var bi = 0; bi < cols.length; bi++) { if (bars[cols[bi]]) { barCol = cols[bi]; break; } }
+    if (barCol) {
+      var used = toIntVal(row[barCol]), mxv = toIntVal(row['__bar__' + barCol]);
+      if (used !== null && mxv !== null && mxv > 0) {
+        var pct = Math.max(0, Math.min(1, used / mxv)), bw = n.w - 52;
+        var bc = (pct * 100) >= bars[barCol].crit ? '#e74c3c' : ((pct * 100) >= bars[barCol].warn ? '#f1c40f' : '#2ecc71');
+        s += '<rect class="gbarbg" x="14" y="46" width="' + bw + '" height="7" rx="3.5"></rect>';
+        s += '<rect x="14" y="46" width="' + (bw * pct).toFixed(1) + '" height="7" rx="3.5" fill="' + bc + '"></rect>';
+        s += '<text class="gpct" x="' + (n.w - 30) + '" y="53">' + Math.round(pct * 100) + '%</text>';
+      }
+    }
+    return s + '</g>';
+  }
+  function renderGraph(name) {
+    var st = secState[name], body = bodyEl(name); if (!st || !st.sec || !body) return;
+    var idx = idxOf(name);
+    var model = graphModel(st);
+    var badges = st.sec.badges || {}, bars = st.sec.bars || {};
+    var tbar = toolbarHtml(st);
+    var summary = '<div class="summary">' + esc(st.sec.summary || '') + '</div>';
+    if (!model.nodes.length) { body.innerHTML = summary + tbar + '<div class="gv-empty">Nothing to graph (list is empty).</div>'; return; }
+    var defs = '<defs><marker id="gar' + idx + '" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7d8590"></path></marker></defs>';
+    var eg = ''; model.edges.forEach(function (ed) { var a = model.byId[ed.from], b = model.byId[ed.to]; if (!a || !b) return; eg += '<path class="gedge ' + ed.type + '" data-f="' + esc(ed.from) + '" data-t="' + esc(ed.to) + '" d="' + edgePath(a, b, ed.type) + '" marker-end="url(#gar' + idx + ')"></path>'; });
+    var ng = ''; model.nodes.forEach(function (n) { ng += nodeSvg(n, badges, bars); });
+    var total = st.sec.grouped ? (st.sec.groups || []).reduce(function (a, g) { return a + (g.rows || []).length; }, 0) : (st.sec.rows || []).length;
+    var banner = model.capped ? '<div class="gv-banner">Showing first ' + GRAPH_MAX + ' of ' + total + ' nodes — narrow the data or use the table view for the full set.</div>' : '';
+    body.innerHTML = summary + tbar + banner +
+      '<div class="gv-wrap">' +
+      '<svg class="gv-svg" id="gsvg-' + idx + '"><g id="gvp-' + idx + '">' + defs + '<g class="gv-edges">' + eg + '</g><g class="gv-nodes">' + ng + '</g></g></svg>' +
+      '<div class="gv-detail" id="gdet-' + idx + '"><span class="close" id="gdc-' + idx + '">✕</span><h3 id="gdt-' + idx + '"></h3><div id="gdb-' + idx + '"></div></div>' +
+      '</div>';
+    wireGraph(name, model, idx);
+  }
+  function wireGraph(name, model, idx) {
+    var st = secState[name];
+    var svg = document.getElementById('gsvg-' + idx), vp = document.getElementById('gvp-' + idx), det = document.getElementById('gdet-' + idx);
+    if (!svg || !vp) return;
+    st.gv = st.gv || { sc: 1, tx: 0, ty: 0, sel: null, needFit: true };
+    function apply() { vp.setAttribute('transform', 'translate(' + st.gv.tx + ',' + st.gv.ty + ') scale(' + st.gv.sc + ')'); }
+    function fit() {
+      var sw = svg.clientWidth, sh = svg.clientHeight;
+      if (!sw || !sh) { st.gv.needFit = true; apply(); return; }
+      var s = Math.min(sw / model.cw, sh / model.ch, 1); if (!isFinite(s) || s <= 0) s = 1;
+      st.gv.sc = s; st.gv.tx = Math.max(8, (sw - model.cw * s) / 2); st.gv.ty = 10; st.gv.needFit = false; apply();
+    }
+    if (st.gv.needFit) fit(); else apply();
+    function neighbors(id) { var ns = {}; ns[id] = 1; model.edges.forEach(function (e) { if (e.from === id || e.to === id) { ns[e.from] = 1; ns[e.to] = 1; } }); return ns; }
+    function focus(id) {
+      var ns = neighbors(id);
+      vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.toggle('dim', !ns[g.getAttribute('data-id')]); });
+      vp.querySelectorAll('.gedge').forEach(function (p) { var on = ns[p.getAttribute('data-f')] && ns[p.getAttribute('data-t')] && (p.getAttribute('data-f') === id || p.getAttribute('data-t') === id); p.classList.toggle('dim', !on); p.classList.toggle('ehl', !!on); });
+    }
+    function clearFocus() { vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.remove('dim'); }); vp.querySelectorAll('.gedge').forEach(function (p) { p.classList.remove('dim'); p.classList.remove('ehl'); }); }
+    function detailFor(id) {
+      var n = model.byId[id]; if (!n) return;
+      var t = n.group ? shortVal(n.label) : (n.cols.length ? shortVal(n.row[n.cols[0]]) : id);
+      document.getElementById('gdt-' + idx).textContent = t;
+      var html;
+      if (n.group) html = '<div class="grow2"><span>members</span><b>' + n.count + '</b></div><div class="grow2"><span>group</span><b>' + esc(cap(name)) + '</b></div>';
+      else html = n.cols.map(function (c) { return '<div class="grow2"><span>' + esc(c) + '</span><b>' + esc(shortVal(n.row[c])) + '</b></div>'; }).join('');
+      document.getElementById('gdb-' + idx).innerHTML = html;
+      det.style.display = 'block';
+    }
+    function selectNode(id) { st.gv.sel = id; vp.querySelectorAll('.gnode').forEach(function (g) { g.classList.toggle('sel', g.getAttribute('data-id') === id); }); focus(id); detailFor(id); }
+    vp.addEventListener('mouseover', function (e) { var g = e.target.closest('.gnode'); if (g && !st.gv.sel) focus(g.getAttribute('data-id')); });
+    vp.addEventListener('mouseout', function () { if (!st.gv.sel) clearFocus(); });
+    vp.addEventListener('click', function (e) { var g = e.target.closest('.gnode'); if (!g) return; e.stopPropagation(); selectNode(g.getAttribute('data-id')); });
+    var dc = document.getElementById('gdc-' + idx);
+    if (dc) dc.addEventListener('click', function (e) { e.stopPropagation(); st.gv.sel = null; det.style.display = 'none'; clearFocus(); vp.querySelectorAll('.gnode.sel').forEach(function (g) { g.classList.remove('sel'); }); });
+    svg.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var f = e.deltaY < 0 ? 1.1 : 1 / 1.1, ns = Math.min(3, Math.max(0.25, st.gv.sc * f));
+      var r = svg.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      st.gv.tx = px - (px - st.gv.tx) * (ns / st.gv.sc); st.gv.ty = py - (py - st.gv.ty) * (ns / st.gv.sc); st.gv.sc = ns; apply();
+    }, { passive: false });
+    var dragging = false, lx = 0, ly = 0;
+    svg.addEventListener('mousedown', function (e) { if (e.target.closest('.gnode')) return; dragging = true; lx = e.clientX; ly = e.clientY; svg.classList.add('panning'); });
+    svg.addEventListener('mousemove', function (e) { if (!dragging) return; st.gv.tx += e.clientX - lx; st.gv.ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply(); });
+    function endPan() { dragging = false; svg.classList.remove('panning'); }
+    svg.addEventListener('mouseup', endPan); svg.addEventListener('mouseleave', endPan);
+    st._fit = fit;
+    if (st.gv.sel && model.byId[st.gv.sel]) selectNode(st.gv.sel); else st.gv.sel = st.gv.sel && model.byId[st.gv.sel] ? st.gv.sel : null;
+  }
+
   // henüz verisi gelmemiş (streaming sırasında sırada bekleyen / yeni gösterilen) bölüm için yer tutucu
   function paintLoading(name) {
     const body = bodyEl(name);
@@ -1773,6 +1988,7 @@ function getHtml(): string {
       body.innerHTML = '<div class="empty">Master section for "' + esc(name) + '" is empty or missing.</div>';
       return;
     }
+    if (st.view === 'graph') { renderGraph(name); return; }
     const cols = displayCols(st);
     const grouped = st.sec.grouped;
     const allRows = grouped ? st.sec.groups.reduce((a, g) => a.concat(g.rows), []) : st.sec.rows;
@@ -1839,7 +2055,10 @@ function getHtml(): string {
     // per-kolon sayı tabanı: kullanıcının önceki seçimi korunur, config (sec.bases) ilk kez doldurur
     const colBase = (prev && prev.colBase) ? prev.colBase : {};
     if (sec.bases) for (const k in sec.bases) if (!(k in colBase)) colBase[k] = sec.bases[k];
-    secState[name] = { sec, sortCol, sortDir, changed, changeCount: count, order, hidden, flat, collapsed, filter, changedOnly, colBase };
+    // graph view: görünüm modu (table/graph) ve pan/zoom durumu (gv) yenilemeler arası korunur
+    const view = (prev && prev.view) ? prev.view : 'table';
+    const gv = (prev && prev.gv) ? prev.gv : null;
+    secState[name] = { sec, sortCol, sortDir, changed, changeCount: count, order, hidden, flat, collapsed, filter, changedOnly, colBase, view, gv };
     const cnt = cntElOf(name);
     if (cnt) cnt.textContent = sec.grouped ? (sec.groups || []).reduce((a, g) => a + g.rows.length, 0) : sec.rows.length;
     const tab = tabElOf(name);
@@ -1928,6 +2147,18 @@ function getHtml(): string {
         st.colBase[l] = nextBase(st.colBase[l] || 'raw');   // raw -> dec -> hex -> bin -> raw
         paint(name); }
       e.stopPropagation();
+      return;
+    }
+    // tablo <-> graph görünüm geçişi
+    if (e.target.closest('.view-toggle')) {
+      const name = paneName(e); const st = secState[name];
+      if (st) { st.view = st.view === 'graph' ? 'table' : 'graph'; if (st.view === 'graph' && !st.gv) st.gv = { sc: 1, tx: 0, ty: 0, sel: null, needFit: true }; paint(name); }
+      return;
+    }
+    // graph: görünüme sığdır
+    if (e.target.closest('.graph-fit')) {
+      const name = paneName(e); const st = secState[name];
+      if (st && typeof st._fit === 'function') st._fit();
       return;
     }
     // grup: düz/ağaç görünüm geçişi

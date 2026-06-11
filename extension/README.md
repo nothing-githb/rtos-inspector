@@ -28,6 +28,12 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   collapsible tree grouped under a master section (`groupBy` + `${master}`) — e.g.
   every process's semaphores under its process node — all at once, with a
   flat-view toggle.
+- **Graph view.** Toggle any section to an interactive node graph with **◉ Graph**
+  (and back with **▤ Table**). Linked/index lists render as a chain along their
+  `next` relationship; grouped sections as master nodes linked to their member cards;
+  arrays as a card grid. Cards show the title, fields, state colour and usage bar.
+  **Hover** highlights a node's neighbours, **click** opens a details panel, and you
+  can **scroll** to zoom, **drag** to pan, and **⤢ Fit** to recentre.
 - **Usage bars.** Render a numeric field as a `used / max · %` bar
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Cross-reference links.** A field with `"link"` renders as a clickable link to

@@ -2,6 +2,26 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.49.0] - 2026-06-11
+
+### Added
+- **Graph view for any section.** Each tab now has a **◉ Graph** toggle (next to
+  **▦ Columns**) that renders the same data as an interactive node graph, so node
+  details and relationships are easier to follow. Switch back any time with **▤ Table**.
+  - **Linked lists** (and index lists) become a top‑to‑bottom chain, with arrows
+    drawn along the `next` relationship between consecutive nodes.
+  - **Grouped (tree) sections** become master group nodes on the left, each linked to
+    its member cards on the right.
+  - **Arrays** become a grid of cards.
+  - Each card shows the row title, two fields, the state colour (left stripe + dot,
+    using the same rules and config‑driven badges as the table), and a usage bar when
+    the column has one configured.
+  - **Hover** highlights a node and its neighbours (the rest dims); **click** selects a
+    node and opens a side panel listing all of its fields. **Scroll** to zoom, **drag**
+    to pan, **⤢ Fit** to recentre. View mode and zoom/pan are preserved across refreshes.
+  - Very large sections cap the drawn nodes (with a visible notice); use the table view
+    for the full set.
+
 ## [0.48.1] - 2026-06-11
 
 ### Changed
