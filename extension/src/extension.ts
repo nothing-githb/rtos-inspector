@@ -3080,10 +3080,12 @@ function getHtml(): string {
     if (!cb) return;
     const n = cb.closest('.cols-item').dataset.sec;
     if (cb.checked) {
-      // GÖSTER: gizli bölümün verisi yok (gizliyken çekilmez) -> reveal ile tazele
+      // GÖSTER: gizli bölümün verisi yok (gizliyken çekilmez) -> önce iskeleti yeniden kur (sekme/pane oluşsun,
+      // değilse gelen patchSection'ın yazacağı body-n yok -> sekme geri gelmez), sonra reveal ile tazele.
       hiddenSections = hiddenSections.filter(x => x !== n);
       buildSectionsMenu();
-      sendSections(n);
+      applySectionLayout();   // currentNames + tabs/panes iskeletini yeniden kur (yeni gösterilen bölüm "Loading…" olur)
+      sendSections(n);        // reveal -> refreshTarget(n) -> patchSection o pane'i doldurur
     } else {
       // GİZLE: en az 1 görünür kalmalı; istemci-tarafı (GDB yok)
       if (visibleFromOrder().length <= 1) { cb.checked = true; return; }

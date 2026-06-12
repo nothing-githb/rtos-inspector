@@ -2,6 +2,14 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.60.1] - 2026-06-12
+
+### Fixed
+- **Re-showing a hidden section now brings its tab back.** In the Sections menu, turning a
+  section off and then on again did nothing — the tab stayed gone. The show path didn't
+  rebuild the tab/pane skeleton, so the refreshed data had no place to render. Showing a
+  section now rebuilds the layout first (the tab reappears, then fills with its data).
+
 ## [0.60.0] - 2026-06-12
 
 ### Added
