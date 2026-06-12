@@ -1344,6 +1344,8 @@ function getHtml(): string {
   .gnode.gv-fade { opacity: 0.12; }
   .gedge.gv-fade { opacity: 0.06; }
   .gnode.gv-cur .card { stroke: #f39c12; stroke-width: 3; filter: drop-shadow(0 0 5px rgba(241,196,15,0.7)); }
+  .gnode.gv-blink .card { animation: gvblink 1.6s ease-out; }
+  @keyframes gvblink { 0%,30%,60% { stroke: #3b9eff; stroke-width: 4; } 15%,45%,100% { stroke: #3b9eff; stroke-width: 1; } }
   .gv-mini {
     position: absolute; left: 12px; bottom: 12px; width: 180px; height: 120px;
     background: var(--vscode-editor-background);
@@ -1495,7 +1497,9 @@ function getHtml(): string {
       }
     }
     switchTab(targetSec);
-    highlightRow(targetSec, matchCol, value);
+    const tst = secState[targetSec];
+    if (tst && tst.view === 'graph' && typeof tst._focusNode === 'function') tst._focusNode(matchCol, value);   // graph hedefi: node'a merkezlen + blink (tablo satırı yerine)
+    else highlightRow(targetSec, matchCol, value);
   }
   function highlightRow(targetSec, matchCol, value) {
     const body = bodyEl(targetSec); const st = secState[targetSec];
@@ -1657,7 +1661,7 @@ function getHtml(): string {
       h += '</div>';
       return h;
     }
-    h += '<input class="tbl-filter" type="text" placeholder="Filter rows…" value="' + esc(st.filter || '') + '">';
+    h += '<input class="tbl-filter" type="text" placeholder="Filter — text or PID>=3" value="' + esc(st.filter || '') + '" title="Filter rows by text, or a field test like PID>=3 / state=running (operators > >= < <= = !=); combine several">';
     if (st.sec.grouped) h += '<button class="btn grp-toggle">' + (st.flat ? '⊞ Tree' : '☰ Flat') + '</button>';
     else if (st.changeCount > 0) h += '<button class="btn chg-only' + (st.changedOnly ? ' on' : '') + '" title="Show only changed rows">Δ Changed</button>';
     h += '<span class="grow"></span>';
@@ -1672,10 +1676,13 @@ function getHtml(): string {
   function applyFilter(name) {
     const st = secState[name]; const body = bodyEl(name);
     if (!st || !body) return;
-    const f = (st.filter || '').trim().toLowerCase();
     const tb = body.querySelector('tbody'); if (!tb) return;
+    // filtre artık düz metin + ALAN PREDİKATLARI (PID>=3, state=running ...) — graph aramasıyla aynı kurallar
+    const pq = parseSearch(st.filter || '');
     const chgOnly = st.changedOnly && !st.sec.grouped && st.changeCount > 0;
-    const active = !!f || chgOnly;                       // herhangi bir gizleme kriteri var mı
+    const active = pq.active || chgOnly;                 // herhangi bir gizleme kriteri var mı
+    const cols = displayCols(st);
+    const allRows = st.sec.grouped ? st.sec.groups.reduce((a, g) => a.concat(g.rows), []) : st.sec.rows;
     const collapsed = st.collapsed || [];
     let grp = null, grpVisible = false, grpKey = null;
     // grup başlığını yalnız FİLTRE/changed-only ile (tüm satırları elenince) gizle;
@@ -1686,7 +1693,15 @@ function getHtml(): string {
     for (const tr of tb.children) {
       if (tr.classList.contains('grphdr')) { finalize(); grp = tr; grpKey = tr.dataset.grp; grpVisible = false; continue; }
       let show = true;
-      if (f && tr.textContent.toLowerCase().indexOf(f) === -1) show = false;
+      if (pq.active) {
+        const txt = tr.textContent.toLowerCase();
+        for (let i = 0; i < pq.plain.length && show; i++) if (txt.indexOf(pq.plain[i]) === -1) show = false;   // düz terimler: satır metni
+        if (show && pq.preds.length) {   // predikatlar: satırın alan değerinde (data-ri -> kaynak satır)
+          const ri = (tr.dataset.ri != null && tr.dataset.ri !== '') ? +tr.dataset.ri : -1;
+          const node = { cols: cols, row: (ri >= 0 && allRows[ri]) ? allRows[ri] : {} };
+          for (let j = 0; j < pq.preds.length && show; j++) if (!predOk(node, pq.preds[j])) show = false;
+        }
+      }
       if (show && chgOnly && !tr.querySelector('td.changed')) show = false;
       tr.style.display = show ? '' : 'none';
       if (show) grpVisible = true;
@@ -2018,9 +2033,17 @@ function getHtml(): string {
         });
       });
       // ghost'ları sağ "hedefler" oluğuna yerleştir: hedef bölüme göre kümele, kaynak-y'ye göre sırala (az kesişme)
+      // ghost'ları sağ oluğa koy ama her birini bağlı olduğu düğümün Y'sine HİZALA (hepsi tepeye yığılmasın);
+      // çakışmayı aşağı iterek çöz -> kısa, çoğunlukla yatay kenarlar (kaynağına yakın)
       var gx0 = 0; nodes.forEach(function (n) { if (n.x + n.w > gx0) gx0 = n.x + n.w; });
-      ghosts.sort(function (a, b) { return a.tsec < b.tsec ? -1 : a.tsec > b.tsec ? 1 : (a.srcY - b.srcY); });
-      ghosts.forEach(function (gh, k) { gh.x = gx0 + GVGX * 2; gh.y = GVPAD + 22 + k * (44 + GVGY); nodes.push(gh); });
+      ghosts.sort(function (a, b) { return a.srcY - b.srcY; });
+      var lastGy = -1e9;
+      ghosts.forEach(function (gh) {
+        gh.x = gx0 + GVGX;
+        var y = Math.max(GVPAD + 22, gh.srcY);
+        if (y < lastGy + gh.h + 12) y = lastGy + gh.h + 12;
+        gh.y = y; lastGy = y; nodes.push(gh);
+      });
     }
     // kullanıcının sürükleyip taşıdığı düğüm konumları (kalıcı) otomatik yerleşimi ezsin (kararlı pkey ile)
     var saved = st.gv && st.gv.pos;
@@ -2345,6 +2368,26 @@ function getHtml(): string {
       miniSvg.addEventListener('mouseup', mEnd); miniSvg.addEventListener('mouseleave', mEnd);
     }
     st._fit = fit;
+    // cross-section link tıklamasında (gotoXref) bu graf'ta hedef düğüme merkezlen + blink (tablo satırı yerine)
+    st._focusNode = function (matchCol, value) {
+      // eşleşme değerini TÜM satırdan çöz (match kolonu hedefte GİZLİ olsa bile row onu taşır); yoksa ilk görünür kolon
+      function rowVal(row, col) {
+        if (row[col] != null) return row[col];
+        var lc = String(col).toLowerCase();
+        for (var k in row) if (k.charAt(0) !== '_' && String(k).toLowerCase() === lc) return row[k];
+        return null;
+      }
+      var target = null;
+      for (var i = 0; i < model.nodes.length; i++) {
+        var nn = model.nodes[i]; if (nn.ghost || nn.group || !nn.row || !nn.cols) continue;
+        var rv = matchCol ? rowVal(nn.row, matchCol) : nn.row[nn.cols[0]];
+        if (rv != null && String(rv) === String(value)) { target = nn; break; }
+      }
+      if (!target) return;
+      centerOn(target);
+      var el = nodeEls && nodeEls[target._i];
+      if (el) { el.classList.remove('gv-blink'); setTimeout(function () { el.classList.add('gv-blink'); }, 20); setTimeout(function () { el.classList.remove('gv-blink'); }, 1700); }
+    };
     if (st.gv.sel && model.byId[st.gv.sel]) selectNode(st.gv.sel); else st.gv.sel = st.gv.sel && model.byId[st.gv.sel] ? st.gv.sel : null;
     if (st.gv.q) { if (sBox) sBox.value = st.gv.q; applySearch(); } else syncMini();   // refresh sonrası arama/minimap durumunu geri uygula
   }

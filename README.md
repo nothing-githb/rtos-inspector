@@ -81,8 +81,9 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   and a `paused` pill when paused.
 - **Sortable columns** — numeric/hex sorts numerically, text sorts alphabetically.
 - **Filter & changed-only** — a per-tab filter box narrows rows as you type
-  (focus-preserving); a **Changed** toggle shows only rows that moved since the
-  last stop.
+  (focus-preserving): plain text, or a field test like `PID>=3` / `state=running`
+  (operators `> >= < <= = !=`, combinable); a **Changed** toggle shows only rows that
+  moved since the last stop.
 - **Copy out & export** — copy the (filtered) table as **CSV** or **Markdown** with
   one click (grouped tables add a `Group` column), or **⤓ JSON** in the top bar to
   export every section's data to a JSON file.

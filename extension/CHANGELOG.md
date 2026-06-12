@@ -2,6 +2,24 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.55.0] - 2026-06-12
+
+### Added
+- **Field tests in the table filter.** The per-tab filter box now accepts the same
+  conditions as graph search — e.g. `PID>=3`, `state=running`, `count!=0` (operators
+  `> >= < <= = !=`), combinable and mixable with plain text — not just substring matching.
+
+### Changed
+- **Graph link targets sit next to what they relate to.** Cross-section link cards used to
+  pile up in a far-right column; they're now placed at the row height of the node they link
+  to, so the purple links are short and easy to follow.
+- **Clicking a link focuses the target node.** When the linked section is shown as a graph,
+  clicking a link now centers and briefly highlights the **target node** (and works even
+  when that tab is already open), instead of only flashing a table row.
+
+(You can already choose which fields a graph node shows — hide/reorder columns via **▦ Fields**;
+the first visible column is the node's title.)
+
 ## [0.54.0] - 2026-06-12
 
 ### Added
