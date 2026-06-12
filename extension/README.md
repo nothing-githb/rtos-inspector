@@ -40,7 +40,10 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   target to jump to it). A **Find** box spotlights matching nodes — by text or a field
   test like `count>=3` / `state=running` (operators `> >= < <= = !=`, combinable),
   with Enter / Shift+Enter to cycle — and a **◉ Map** minimap helps you navigate large
-  graphs. Grouped sections pack their groups into a balanced grid.
+  graphs. Grouped sections pack their groups into a balanced grid; **drag a group's header**
+  to move the whole block. Cards show **all** of a section's visible fields. **Right-click a
+  node** to copy it as a watch expression. The **⇄ Links** layer shows both outgoing and
+  **incoming** cross-section links (e.g. which mutexes own a thread).
 - **Usage bars.** Render a numeric field as a `used / max · %` bar
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Cross-reference links.** A field with `"link"` renders as a clickable link to

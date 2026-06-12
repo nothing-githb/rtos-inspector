@@ -1303,6 +1303,8 @@ function getHtml(): string {
   .gnode.gv-group .card { fill: var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.18)); }
   .gnode .gtitle { fill: var(--vscode-foreground); font-size: 12.5px; font-weight: 600; }
   .gnode .gsub { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 10.5px; }
+  .gnode .flab { fill: var(--vscode-descriptionForeground, #8a8a8a); font-size: 10.5px; }
+  .gnode .fval { fill: var(--vscode-foreground); font-size: 10.5px; }
   .gnode.dim { opacity: 0.16; }
   .gedge { fill: none; stroke: #7d8590; stroke-width: 1.5; transition: opacity 0.12s, stroke 0.12s, stroke-width 0.12s; }
   .gedge.dim { opacity: 0.1; }
@@ -1353,7 +1355,8 @@ function getHtml(): string {
   .gv-mini .mnode.gm-hit { fill: #f1c40f; opacity: 1; }
   .gv-mini .gv-vp { fill: rgba(59,158,255,0.16); stroke: #3b9eff; stroke-width: 2; vector-effect: non-scaling-stroke; }
   .gv-wrap.lod-far .gnode .gtitle, .gv-wrap.lod-far .gnode .gsub, .gv-wrap.lod-far .gnode .gpct,
-  .gv-wrap.lod-far .gnode .gbarbg, .gv-wrap.lod-far .gnode circle { display: none; }
+  .gv-wrap.lod-far .gnode .flab, .gv-wrap.lod-far .gnode .fval,
+  .gv-wrap.lod-far .gnode .gbarbg, .gv-wrap.lod-far .gnode .gbarfill, .gv-wrap.lod-far .gnode circle { display: none; }
 </style>
 </head>
 <body>
@@ -1632,13 +1635,20 @@ function getHtml(): string {
     }
     return set;
   }
+  // Bu bölümün GİDEN (kendi link alanları) VEYA GELEN (başka bölüm buna link veriyor) linki var mı
+  function sectionHasLinks(secObj) {
+    if (secObj.links && Object.keys(secObj.links).length) return true;
+    var nm = secObj.name;
+    for (var k in secState) { var os = secState[k]; if (os && os.sec && os.sec.links) { for (var c in os.sec.links) if (os.sec.links[c].section === nm) return true; } }
+    return false;
+  }
   // --- araç çubuğu (filtre / changed-only / kopya); sayı tabanı artık per-kolon (▦ Columns) ---
   function toolbarHtml(st) {
     let h = '<div class="tbl-bar">';
     if (st.view === 'graph') {
       h += '<button class="btn view-toggle" title="Switch back to the table view">▤ Table</button>';
       h += '<button class="btn graph-fit" title="Fit the graph to the view">⤢ Fit</button>';
-      if (st.sec.links && Object.keys(st.sec.links).length) h += '<button class="btn links-toggle' + ((st.gv && st.gv.links) ? ' on' : '') + '" title="Show cross-section relationship links (purple)">⇄ Links</button>';
+      if (sectionHasLinks(st.sec)) h += '<button class="btn links-toggle' + ((st.gv && st.gv.links) ? ' on' : '') + '" title="Show cross-section relationship links (purple) — outgoing and incoming">⇄ Links</button>';
       h += '<input class="gv-search" type="text" placeholder="Find — text or field>=3" value="' + esc((st.gv && st.gv.q) || '') + '" title="Find nodes by text, or a field test like count>=3 / state=running (operators > >= < <= = !=). Enter / Shift+Enter to cycle, Esc to clear">';
       h += '<span class="gv-srch-n"></span>';
       h += '<span class="grow"></span>';
@@ -1902,6 +1912,7 @@ function getHtml(): string {
   function graphModel(st) {
     var sec = st.sec, cols = displayCols(st);
     var nodes = [], edges = [], capped = false;
+    var CARDH = Math.max(46, 26 + Math.max(0, cols.length - 1) * 16);   // kart yüksekliği: TÜM görünür alanlar gösterilsin (section başına tek-tip)
     if (sec.grouped) {
       // her grup bir BLOK (üstte etiket, altında üyeler mini-ızgarada); bloklar ~kare bir IZGARAYA paketlenir
       // (tek sırada yan yana değil) -> çok grupta dengeli/kompakt görünüm. ncols ≈ sqrt(grup sayısı).
@@ -1910,7 +1921,7 @@ function getHtml(): string {
         var rws = g.rows || [];
         var gper = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(rws.length || 1))));
         var laneRows = Math.max(1, Math.ceil(rws.length / gper));
-        return { g: g, gi: gi, rws: rws, gper: gper, bw: gper * (GVW + GVGX) - GVGX, bh: GVGROUPH + GVGY + laneRows * (GVH + GVGY) };
+        return { g: g, gi: gi, rws: rws, gper: gper, bw: gper * (GVW + GVGX) - GVGX, bh: GVGROUPH + GVGY + laneRows * (CARDH + GVGY) };
       });
       var ncols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
       var col = 0, curX = GVPAD, curY = GVPAD + 22, rowMaxH = 0;
@@ -1918,13 +1929,15 @@ function getHtml(): string {
         if (nodes.length >= GRAPH_MAX) { capped = true; return; }   // cap başlıkları da kapsasın -> üyesiz dangling grup kartı + cap aşımı olmasın
         if (col >= ncols) { col = 0; curX = GVPAD; curY += rowMaxH + GAPY; rowMaxH = 0; }
         var bx = curX, by = curY, gkey = (b.g.key != null ? b.g.key : b.gi);
-        nodes.push({ id: 'g' + b.gi, group: true, label: b.g.label, count: b.rws.length, pkey: 'g:' + gkey, x: bx + (b.bw - GVGROUPW) / 2, y: by, w: GVGROUPW, h: GVGROUPH });
+        var gnode = { id: 'g' + b.gi, group: true, label: b.g.label, count: b.rws.length, pkey: 'g:' + gkey, x: bx + (b.bw - GVGROUPW) / 2, y: by, w: GVGROUPW, h: GVGROUPH, members: [] };
+        nodes.push(gnode);
         var memTop = by + GVGROUPH + GVGY;
         b.rws.forEach(function (r, ri) {
           if (nodes.length >= GRAPH_MAX) { capped = true; return; }
-          var cc = ri % b.gper, rr = Math.floor(ri / b.gper);
-          nodes.push({ id: 'm' + b.gi + '_' + ri, row: r, pkey: 'm:' + gkey + ':' + posKeyOf(r, cols, String(ri)), x: bx + cc * (GVW + GVGX), y: memTop + rr * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
-          edges.push({ from: 'g' + b.gi, to: 'm' + b.gi + '_' + ri, type: 'grouped' });
+          var cc = ri % b.gper, rr = Math.floor(ri / b.gper), mid = 'm' + b.gi + '_' + ri;
+          nodes.push({ id: mid, row: r, pkey: 'm:' + gkey + ':' + posKeyOf(r, cols, String(ri)), x: bx + cc * (GVW + GVGX), y: memTop + rr * (CARDH + GVGY), w: GVW, h: CARDH, cols: cols });
+          gnode.members.push(mid);   // grup başlığı sürüklenince blok bütün taşınsın (#2)
+          edges.push({ from: 'g' + b.gi, to: mid, type: 'grouped' });
         });
         curX += b.bw + GAPX; rowMaxH = Math.max(rowMaxH, b.bh); col++;
       });
@@ -1936,7 +1949,7 @@ function getHtml(): string {
         if (nodes.length >= GRAPH_MAX) { capped = true; return; }
         var col = ri % lper, rowN = Math.floor(ri / lper);
         var visCol = (rowN % 2 === 0) ? col : (lper - 1 - col);
-        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + visCol * (GVW + GVGX), y: GVPAD + 22 + rowN * (GVH + GVGY + 14), w: GVW, h: GVH, cols: cols });
+        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + visCol * (GVW + GVGX), y: GVPAD + 22 + rowN * (CARDH + GVGY + 14), w: GVW, h: CARDH, cols: cols });
         if (ri > 0) edges.push({ from: 'n' + (ri - 1), to: 'n' + ri, type: 'next' });
       });
     } else {   // array: ızgara, kenar yok
@@ -1945,38 +1958,63 @@ function getHtml(): string {
       arows.forEach(function (r, ri) {
         if (nodes.length >= GRAPH_MAX) { capped = true; return; }
         var cxn = ri % per, cyn = Math.floor(ri / per);
-        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
+        nodes.push({ id: 'n' + ri, row: r, pkey: posKeyOf(r, cols, 'n' + ri), x: GVPAD + cxn * (GVW + GVGX), y: GVPAD + 22 + cyn * (CARDH + GVGY), w: GVW, h: CARDH, cols: cols });
       });
     }
     // Phase 2: cross-section LINKS (mor) — yalnız "⇄ Links" açıkken. Kaynak düğümlerden hedef satırın
     // (dedupe edilmiş) "ghost" düğümüne mor kesik kenar. linkHasTarget tablo xref'iyle BİREBİR aynı kuralı kullanır.
     var GHOST_MAX = 200, LINK_EDGE_MAX = 600, linkCapped = false;
-    var showLinks = !!(st.gv && st.gv.links) && sec.links && Object.keys(sec.links).length;
-    if (showLinks) {
-      var src = nodes.slice();   // ghost'ları eklemeden ÖNCEki gerçek kaynak düğümler
-      var ghostByKey = {}, ghosts = [], linkEdges = 0, edgeSeen = {};
-      src.forEach(function (n) {
+    if (st.gv && st.gv.links) {   // ⇄ Links açık: GİDEN (bu bölümün link alanları) + GELEN (bu bölümü hedefleyen diğerleri)
+      var src = nodes.slice();   // ghost'ları eklemeden ÖNCEki gerçek düğümler
+      var ghostByKey = {}, ghosts = [], edgeSeen = {}, linkEdges = 0;
+      var addGhost = function (gid, props, srcY) {
+        if (!ghostByKey[gid]) {
+          if (ghosts.length >= GHOST_MAX) { linkCapped = true; return null; }
+          var gh = { id: gid, ghost: true, pkey: gid, w: Math.round(GVW * 0.74), h: 44, srcY: srcY };
+          for (var k in props) gh[k] = props[k];
+          ghostByKey[gid] = gh; ghosts.push(gh);
+        }
+        return ghostByKey[gid];
+      };
+      var addEdge = function (from, to) {
+        var ek = from + '|' + to; if (edgeSeen[ek]) return; edgeSeen[ek] = 1;   // aynı çift -> tek kenar
+        if (linkEdges < LINK_EDGE_MAX) { edges.push({ from: from, to: to, type: 'link' }); linkEdges++; } else linkCapped = true;
+      };
+      // GİDEN: bu bölümün link alanları -> diğer bölümdeki hedef satır (ghost sağ oluğa)
+      if (sec.links && Object.keys(sec.links).length) src.forEach(function (n) {
         if (!n.row || !n.cols) return;
         n.cols.forEach(function (c) {
           var lk = sec.links[c]; if (!lk) return;
-          var raw = n.row[c];
-          if (raw == null || raw === '' || isDash(raw)) return;
-          if (!linkHasTarget(lk, raw)) return;            // hedefte eşleşen satır yoksa kenar yok
+          var raw = n.row[c]; if (raw == null || raw === '' || isDash(raw)) return;
+          if (!linkHasTarget(lk, raw)) return;            // hedefte eşleşen satır yoksa kenar yok (tablo xref ile aynı)
           var tst = secState[lk.section]; if (!tst) return;
           var tvis = tst.order.filter(function (l) { return tst.hidden.indexOf(l) === -1; });
-          var mc = lk.match || tvis[0];
-          var val = String(raw), gid = 'x:' + lk.section + ':' + mc + ':' + val;
-          if (!ghostByKey[gid]) {
-            if (ghosts.length >= GHOST_MAX) { linkCapped = true; return; }
-            var gh = { id: gid, ghost: true, pkey: gid, tsec: lk.section, mc: mc, val: val, w: Math.round(GVW * 0.74), h: 44, srcY: n.y };
-            ghostByKey[gid] = gh; ghosts.push(gh);
-          }
-          n.hasLink = true;
-          var ek = n.id + '|' + gid;
-          if (edgeSeen[ek]) return;   // aynı kaynaktan aynı hedefe 2. link kolonu -> tek kenar (cap'i de boşa harcama)
-          edgeSeen[ek] = 1;
-          if (linkEdges < LINK_EDGE_MAX) { edges.push({ from: n.id, to: gid, type: 'link' }); linkEdges++; }
-          else linkCapped = true;
+          var mc = lk.match || tvis[0], val = String(raw), gid = 'x:' + lk.section + ':' + mc + ':' + val;
+          if (!addGhost(gid, { tsec: lk.section, mc: mc, val: val }, n.y)) return;
+          n.hasLink = true; addEdge(n.id, gid);
+        });
+      });
+      // GELEN: diğer görünür bölümlerden BU bölüme işaret eden linkler (ghost = o kaynak satır; ok bana doğru)
+      var myByCol = {};
+      var myNodeBy = function (mc, v) {
+        if (!myByCol[mc]) { var m = {}; src.forEach(function (n) { if (n.row && n.row[mc] != null) m[String(n.row[mc])] = n; }); myByCol[mc] = m; }
+        return myByCol[mc][String(v)];
+      };
+      Object.keys(secState).forEach(function (osec) {
+        if (osec === sec.name) return;
+        var ost = secState[osec]; if (!ost || !ost.sec || !ost.sec.links) return;
+        var ovis = ost.order.filter(function (l) { return ost.hidden.indexOf(l) === -1; });
+        var orows = ost.sec.grouped ? (ost.sec.groups || []).reduce(function (a, g) { return a.concat(g.rows || []); }, []) : (ost.sec.rows || []);
+        Object.keys(ost.sec.links).forEach(function (oc) {
+          var lk = ost.sec.links[oc]; if (lk.section !== sec.name) return;
+          var mc = lk.match || cols[0], srcCol = ovis[0] || (ost.order && ost.order[0]) || oc;   // tüm kolonlar gizliyse fallback (undefined gid çakışması olmasın)
+          orows.forEach(function (orow) {
+            var v = orow[oc]; if (v == null || v === '' || isDash(v)) return;
+            var myNode = myNodeBy(mc, v); if (!myNode) return;   // bu değer benim hangi düğümüme işaret ediyor
+            var sval = String(srcCol && orow[srcCol] != null ? orow[srcCol] : v), gid = 'xi:' + osec + ':' + srcCol + ':' + sval;
+            if (!addGhost(gid, { tsec: osec, mc: srcCol, val: sval, incoming: true }, myNode.y)) return;
+            myNode.hasLink = true; addEdge(gid, myNode.id);   // ghost(kaynak) -> benim düğümüm
+          });
         });
       });
       // ghost'ları sağ "hedefler" oluğuna yerleştir: hedef bölüme göre kümele, kaynak-y'ye göre sırala (az kesişme)
@@ -2045,26 +2083,33 @@ function getHtml(): string {
     }
     var row = n.row, cols = n.cols, color = nodeColor(row, cols, badges);
     var title = cols.length ? shortVal(row[cols[0]]) : '';
-    var fcols = cols.slice(1, 3);
-    var s = '<g class="gnode" data-id="' + esc(n.id) + '" data-search="' + esc(n._s || '') + '" transform="translate(' + n.x + ',' + n.y + ')">';
+    var elAttr = row['__el__'] ? ' data-el="' + esc(row['__el__']) + '"' : '';   // #1: sağ tık -> watch ifadesi kopyala
+    var s = '<g class="gnode" data-id="' + esc(n.id) + '" data-search="' + esc(n._s || '') + '"' + elAttr + ' transform="translate(' + n.x + ',' + n.y + ')">';
     s += '<rect class="card" width="' + n.w + '" height="' + n.h + '" rx="8"></rect>';
     if (color) s += '<rect x="0" y="0" width="4" height="' + n.h + '" rx="2" fill="' + color + '"></rect>';
-    s += '<text class="gtitle" x="14" y="20">' + esc(title) + '</text>';
-    if (color) s += '<circle cx="' + (n.w - 14) + '" cy="15" r="5" fill="' + color + '"></circle>';
-    if (n.hasLink) s += '<circle cx="' + (n.w - 26) + '" cy="15" r="3" fill="#b07cc6"></circle>';   // dışa link var işareti
-    var subTxt = fcols.map(function (c) { return esc(c) + ' ' + esc(shortVal(row[c])); }).join('   ·   ');
-    if (subTxt) s += '<text class="gsub" x="14" y="37">' + subTxt + '</text>';
-    var barCol = null; for (var bi = 0; bi < cols.length; bi++) { if (bars[cols[bi]]) { barCol = cols[bi]; break; } }
-    if (barCol) {
-      var used = toIntVal(row[barCol]), mxv = toIntVal(row['__bar__' + barCol]);
-      if (used !== null && mxv !== null && mxv > 0) {
-        var pct = Math.max(0, Math.min(1, used / mxv)), bw = n.w - 52;
-        var bc = (pct * 100) >= bars[barCol].crit ? '#e74c3c' : ((pct * 100) >= bars[barCol].warn ? '#f1c40f' : '#2ecc71');
-        s += '<rect class="gbarbg" x="14" y="46" width="' + bw + '" height="7" rx="3.5"></rect>';
-        s += '<rect x="14" y="46" width="' + (bw * pct).toFixed(1) + '" height="7" rx="3.5" fill="' + bc + '"></rect>';
-        s += '<text class="gpct" x="' + (n.w - 30) + '" y="53">' + Math.round(pct * 100) + '%</text>';
+    s += '<text class="gtitle" x="14" y="18">' + esc(title) + '</text>';
+    if (color) s += '<circle cx="' + (n.w - 14) + '" cy="14" r="5" fill="' + color + '"></circle>';
+    if (n.hasLink) s += '<circle cx="' + (n.w - 26) + '" cy="14" r="3" fill="#b07cc6"></circle>';   // dışa/içe link var işareti
+    // #4: TÜM görünür alanlar (cols.slice(1)) ayrı satırlarda; bar kolonu mini-çubuk
+    var fy = 34;
+    cols.slice(1).forEach(function (c) {
+      s += '<text class="flab" x="14" y="' + fy + '">' + esc(c) + '</text>';
+      if (bars[c]) {
+        var used = toIntVal(row[c]), mxv = toIntVal(row['__bar__' + c]);
+        if (used !== null && mxv !== null && mxv > 0) {
+          var pct = Math.max(0, Math.min(1, used / mxv)), bx2 = 76, bw = n.w - bx2 - 38;
+          var bc = (pct * 100) >= bars[c].crit ? '#e74c3c' : ((pct * 100) >= bars[c].warn ? '#f1c40f' : '#2ecc71');
+          s += '<rect class="gbarbg" x="' + bx2 + '" y="' + (fy - 8) + '" width="' + bw + '" height="7" rx="3.5"></rect>';
+          s += '<rect class="gbarfill" x="' + bx2 + '" y="' + (fy - 8) + '" width="' + (bw * pct).toFixed(1) + '" height="7" rx="3.5" fill="' + bc + '"></rect>';
+          s += '<text class="gpct" x="' + (n.w - 12) + '" y="' + (fy - 1) + '" text-anchor="end">' + Math.round(pct * 100) + '%</text>';
+        } else {
+          s += '<text class="fval" x="' + (n.w - 12) + '" y="' + fy + '" text-anchor="end">' + esc(shortVal(row[c])) + '</text>';
+        }
+      } else {
+        s += '<text class="fval" x="' + (n.w - 12) + '" y="' + fy + '" text-anchor="end">' + esc(shortVal(row[c])) + '</text>';
       }
-    }
+      fy += 16;
+    });
     return s + '</g>';
   }
   function renderGraph(name) {
@@ -2209,7 +2254,7 @@ function getHtml(): string {
       var n = model.byId[id]; if (!n) return;
       if (n.ghost) {   // ghost'ta n.row/n.cols yok -> ayrı detay; tıklarsa gotoXref zaten hedefe götürür
         document.getElementById('gdt-' + idx).textContent = shortVal(n.val);
-        document.getElementById('gdb-' + idx).innerHTML = '<div class="grow2"><span>links to</span><b>' + esc(cap(n.tsec)) + '</b></div><div class="grow2"><span>' + esc(n.mc) + '</span><b>' + esc(n.val) + '</b></div>';
+        document.getElementById('gdb-' + idx).innerHTML = '<div class="grow2"><span>' + (n.incoming ? 'linked from' : 'links to') + '</span><b>' + esc(cap(n.tsec)) + '</b></div><div class="grow2"><span>' + esc(n.mc) + '</span><b>' + esc(n.val) + '</b></div>';
         det.style.display = 'block';
         return;
       }
@@ -2243,24 +2288,30 @@ function getHtml(): string {
     svg.addEventListener('mousedown', function (e) {
       suppressClick = false;   // önceki etkileşimden kalan bastırmayı temizle
       var g = e.target.closest ? e.target.closest('.gnode') : null;
-      if (g) {   // DÜĞÜM sürükle (arka plan pan'i değil)
+      if (g) {   // DÜĞÜM sürükle (arka plan pan'i değil); grup başlığıysa BLOK bütün (#2)
         var id = g.getAttribute('data-id'), n = model.byId[id]; if (!n) return;
         e.stopPropagation();
-        nd = { id: id, g: g, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false };
+        var items = [{ n: n, el: g, ox: n.x, oy: n.y }];
+        if (n.group && n.members) n.members.forEach(function (mid) { var m = model.byId[mid], el = m ? (nodeEls && nodeEls[m._i]) : null; if (m && el) items.push({ n: m, el: el, ox: m.x, oy: m.y }); });
+        var minOx = Infinity, minOy = Infinity;
+        items.forEach(function (it) { if (it.ox < minOx) minOx = it.ox; if (it.oy < minOy) minOy = it.oy; });
+        nd = { id: id, g: g, sx: e.clientX, sy: e.clientY, moved: false, items: items, minOx: minOx, minOy: minOy };
         g.classList.add('gv-dragging');
         return;
       }
       dragging = true; lx = e.clientX; ly = e.clientY; svg.classList.add('panning');
     });
     svg.addEventListener('mousemove', function (e) {
-      if (nd) {   // düğüm sürükleniyor: delta / sc ile 1:1 takip, bağlı kenarları canlı çiz
-        var n = model.byId[nd.id]; if (!n) return;
+      if (nd) {   // düğüm(ler) sürükleniyor: delta / sc ile 1:1 takip, bağlı kenarları + minimap'i canlı güncelle
         if (!nd.moved && (Math.abs(e.clientX - nd.sx) + Math.abs(e.clientY - nd.sy)) > 3) nd.moved = true;
         if (!nd.moved) return;
-        n.x = Math.max(0, nd.ox + (e.clientX - nd.sx) / st.gv.sc);
-        n.y = Math.max(0, nd.oy + (e.clientY - nd.sy) / st.gv.sc);
-        nd.g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
-        redrawEdges(nd.id); nudgeMiniNode(n);
+        var dx = (e.clientX - nd.sx) / st.gv.sc, dy = (e.clientY - nd.sy) / st.gv.sc;
+        var adx = Math.max(dx, -nd.minOx), ady = Math.max(dy, -nd.minOy);   // bloğu BÜTÜN tut: delta'yı bir kez clamp et (kenarda shear olmasın)
+        nd.items.forEach(function (it) {
+          it.n.x = it.ox + adx; it.n.y = it.oy + ady;
+          if (it.el) it.el.setAttribute('transform', 'translate(' + it.n.x + ',' + it.n.y + ')');
+          redrawEdges(it.n.id); nudgeMiniNode(it.n);
+        });
         return;
       }
       if (!dragging) return; st.gv.tx += e.clientX - lx; st.gv.ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply();
@@ -2268,9 +2319,8 @@ function getHtml(): string {
     function endPan() {
       if (nd) {
         if (nd.moved) {
-          var n = model.byId[nd.id];
-          if (n) st.gv.pos[n.pkey] = { x: n.x, y: n.y };   // taşınan konumu KARARLI satır kimliğiyle sakla (yeniden sıralamaya dayanıklı)
-          suppressClick = true; recomputeBounds(); setMiniScale(); nudgeMiniNode(n); syncMini();
+          nd.items.forEach(function (it) { st.gv.pos[it.n.pkey] = { x: it.n.x, y: it.n.y }; });   // tüm taşınanları KARARLI pkey ile sakla
+          suppressClick = true; recomputeBounds(); setMiniScale(); syncMini();
         }
         nd.g.classList.remove('gv-dragging'); nd = null;
       }
@@ -2670,6 +2720,12 @@ function getHtml(): string {
       menu.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
       menu.style.top = Math.min(e.clientY, window.innerHeight - 40) + 'px';
       menu.classList.remove('hidden');
+      return;
+    }
+    const gnode = e.target.closest('.gnode');
+    if (gnode) {   // #1 graph düğümü sağ tık: satırı watch ifadesi olarak kopyala (VS Code Watch'a yapıştır)
+      e.preventDefault();
+      if (gnode.dataset.el) popMenu(name, e, '<div class="cm-item cell-watch" data-el="' + esc(gnode.dataset.el) + '">Copy row as watch expression</div>');
       return;
     }
     const td = e.target.closest('tbody td');

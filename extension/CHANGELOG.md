@@ -2,6 +2,23 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.54.0] - 2026-06-12
+
+### Added
+- **Right-click a graph node → "Copy row as watch expression"** (paste it into VS Code's
+  Watch view), matching the table's row context menu.
+- **Move a whole group in the graph.** Drag a group's header in a grouped graph and the
+  entire block — label and members — moves together; the placement is remembered.
+- **Incoming cross-section links.** A section's graph now also shows the relationships that
+  point *to* it, not just the ones it points out — e.g. the **threads** graph shows the
+  mutexes that own each thread. The **⇄ Links** toggle appears whenever a section has
+  outgoing **or** incoming links, and the detail panel notes the direction.
+
+### Changed
+- **Graph cards show every visible field.** Cards used to show only the first two fields;
+  now they list all of a section's visible columns (e.g. a semaphore's `Discipline`), with
+  the card height adjusting per section. Hide columns via **▦ Fields** to shrink them.
+
 ## [0.53.0] - 2026-06-12
 
 ### Added
