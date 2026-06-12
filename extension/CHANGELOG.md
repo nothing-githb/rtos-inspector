@@ -2,6 +2,20 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.53.0] - 2026-06-12
+
+### Added
+- **Field tests in graph search.** Besides plain text, the **Find** box now accepts
+  per-field conditions like `count>=3`, `state=running`, or `waiters>0` — operators
+  `>` `>=` `<` `<=` `=` `!=`. Combine several (they AND together, and mix with plain
+  text). Numeric comparisons parse the field value; `=`/`!=` fall back to a
+  case-insensitive text match.
+
+### Changed
+- **Grouped graphs pack into a balanced grid.** Instead of laying every group out in one
+  long row, groups are now arranged as blocks in a roughly square grid, so a section with
+  many groups stays compact and readable.
+
 ## [0.52.0] - 2026-06-12
 
 ### Added

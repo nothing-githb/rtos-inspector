@@ -1639,7 +1639,7 @@ function getHtml(): string {
       h += '<button class="btn view-toggle" title="Switch back to the table view">▤ Table</button>';
       h += '<button class="btn graph-fit" title="Fit the graph to the view">⤢ Fit</button>';
       if (st.sec.links && Object.keys(st.sec.links).length) h += '<button class="btn links-toggle' + ((st.gv && st.gv.links) ? ' on' : '') + '" title="Show cross-section relationship links (purple)">⇄ Links</button>';
-      h += '<input class="gv-search" type="text" placeholder="Find nodes…" value="' + esc((st.gv && st.gv.q) || '') + '" title="Find nodes — Enter / Shift+Enter to cycle matches, Esc to clear">';
+      h += '<input class="gv-search" type="text" placeholder="Find — text or field>=3" value="' + esc((st.gv && st.gv.q) || '') + '" title="Find nodes by text, or a field test like count>=3 / state=running (operators > >= < <= = !=). Enter / Shift+Enter to cycle, Esc to clear">';
       h += '<span class="gv-srch-n"></span>';
       h += '<span class="grow"></span>';
       h += '<button class="btn map-toggle' + ((st.gv && st.gv.mini) ? ' on' : '') + '" title="Show / hide the minimap">◉ Map</button>';
@@ -1864,26 +1864,69 @@ function getHtml(): string {
   // Sürükle-konum kalıcılık anahtarı: KARARLI satır kimliği (ilk kolon değeri — değişiklik-vurgusuyla aynı),
   // konumsal index değil -> liste yeniden sıralanınca taşınan konum doğru satırı izler (id'ye değil veriye bağlı)
   function posKeyOf(r, cols, fallback) { var k = rowKeyOf(r, cols); return k !== '' ? k : fallback; }
+  // Arama sorgusu: düz metin (substring AND) + ALAN PREDİKATLARI "field OP value" (OP: > >= < <= = == !=).
+  function parseSearch(q) {
+    var preds = [], plain = [];
+    var re = /([A-Za-z_][\\w]*)\\s*(>=|<=|!=|==|=|>|<)\\s*("[^"]*"|[^\\s]+)/g;
+    var rest = String(q || '').replace(re, function (_, f, op, v) {
+      preds.push({ f: f.toLowerCase(), op: op === '==' ? '=' : op, v: v.replace(/^"|"$/g, '') });
+      return ' ';
+    });
+    rest.trim().toLowerCase().split(/\\s+/).forEach(function (t) { if (t) plain.push(t); });
+    return { preds: preds, plain: plain, active: !!(preds.length || plain.length) };
+  }
+  function fieldVal(n, fname) {   // düğümün alan değeri (yalnız data düğümünde; case-insensitive kolon adı)
+    if (!n.cols || !n.row) return null;
+    for (var i = 0; i < n.cols.length; i++) if (String(n.cols[i]).toLowerCase() === fname) return n.row[n.cols[i]];
+    return null;
+  }
+  function predOk(n, p) {
+    var raw = fieldVal(n, p.f); if (raw == null) return false;
+    if (p.op === '>' || p.op === '>=' || p.op === '<' || p.op === '<=') {   // sayısal karşılaştırma
+      var a = toIntVal(raw), b = toIntVal(p.v);
+      if (a === null) a = parseFloat(raw); if (b === null) b = parseFloat(p.v);
+      if (isNaN(a) || isNaN(b)) return false;
+      return p.op === '>' ? a > b : p.op === '>=' ? a >= b : p.op === '<' ? a < b : a <= b;
+    }
+    var na = toIntVal(raw), nb = toIntVal(p.v);   // = / != : sayısalsa sayı, değilse case-insensitive metin eşitliği
+    var eq = (na !== null && nb !== null) ? (na === nb) : (String(raw).trim().toLowerCase() === String(p.v).trim().toLowerCase());
+    return p.op === '!=' ? !eq : eq;
+  }
+  function nodeMatch(n, pq) {   // tüm düz terimler (corpus'ta) VE tüm predikatlar tutmalı (AND)
+    if (!pq.active) return false;
+    for (var i = 0; i < pq.plain.length; i++) if ((n._s || '').indexOf(pq.plain[i]) === -1) return false;
+    for (var j = 0; j < pq.preds.length; j++) if (!predOk(n, pq.preds[j])) return false;
+    return true;
+  }
   // Bölüm verisinden düğüm + kenar modeli (konumlar grafik koordinatında)
   function graphModel(st) {
     var sec = st.sec, cols = displayCols(st);
     var nodes = [], edges = [], capped = false;
     if (sec.grouped) {
-      // her grup bir SÜTUN (kulvar): üstte grup etiketi, altında üyeler mini-ızgarada -> tek uzun yığın yok
-      var laneX = GVPAD, labelY = GVPAD + 22, memTop = labelY + GVGROUPH + GVGY;
-      (sec.groups || []).forEach(function (g, gi) {
+      // her grup bir BLOK (üstte etiket, altında üyeler mini-ızgarada); bloklar ~kare bir IZGARAYA paketlenir
+      // (tek sırada yan yana değil) -> çok grupta dengeli/kompakt görünüm. ncols ≈ sqrt(grup sayısı).
+      var GAPX = 44, GAPY = 34;
+      var blocks = (sec.groups || []).map(function (g, gi) {
         var rws = g.rows || [];
         var gper = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(rws.length || 1))));
-        var laneCols = gper;
-        var gkey = (g.key != null ? g.key : gi);
-        nodes.push({ id: 'g' + gi, group: true, label: g.label, count: rws.length, pkey: 'g:' + gkey, x: laneX + (laneCols * (GVW + GVGX) - GVGX - GVGROUPW) / 2, y: labelY, w: GVGROUPW, h: GVGROUPH });
-        rws.forEach(function (r, ri) {
+        var laneRows = Math.max(1, Math.ceil(rws.length / gper));
+        return { g: g, gi: gi, rws: rws, gper: gper, bw: gper * (GVW + GVGX) - GVGX, bh: GVGROUPH + GVGY + laneRows * (GVH + GVGY) };
+      });
+      var ncols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
+      var col = 0, curX = GVPAD, curY = GVPAD + 22, rowMaxH = 0;
+      blocks.forEach(function (b) {
+        if (nodes.length >= GRAPH_MAX) { capped = true; return; }   // cap başlıkları da kapsasın -> üyesiz dangling grup kartı + cap aşımı olmasın
+        if (col >= ncols) { col = 0; curX = GVPAD; curY += rowMaxH + GAPY; rowMaxH = 0; }
+        var bx = curX, by = curY, gkey = (b.g.key != null ? b.g.key : b.gi);
+        nodes.push({ id: 'g' + b.gi, group: true, label: b.g.label, count: b.rws.length, pkey: 'g:' + gkey, x: bx + (b.bw - GVGROUPW) / 2, y: by, w: GVGROUPW, h: GVGROUPH });
+        var memTop = by + GVGROUPH + GVGY;
+        b.rws.forEach(function (r, ri) {
           if (nodes.length >= GRAPH_MAX) { capped = true; return; }
-          var cc = ri % gper, rr = Math.floor(ri / gper);
-          nodes.push({ id: 'm' + gi + '_' + ri, row: r, pkey: 'm:' + gkey + ':' + posKeyOf(r, cols, String(ri)), x: laneX + cc * (GVW + GVGX), y: memTop + rr * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
-          edges.push({ from: 'g' + gi, to: 'm' + gi + '_' + ri, type: 'grouped' });
+          var cc = ri % b.gper, rr = Math.floor(ri / b.gper);
+          nodes.push({ id: 'm' + b.gi + '_' + ri, row: r, pkey: 'm:' + gkey + ':' + posKeyOf(r, cols, String(ri)), x: bx + cc * (GVW + GVGX), y: memTop + rr * (GVH + GVGY), w: GVW, h: GVH, cols: cols });
+          edges.push({ from: 'g' + b.gi, to: 'm' + b.gi + '_' + ri, type: 'grouped' });
         });
-        laneX += laneCols * (GVW + GVGX) + 24;
+        curX += b.bw + GAPX; rowMaxH = Math.max(rowMaxH, b.bh); col++;
       });
     } else if (sec.kind === 'linked' || sec.kind === 'index') {
       // serpentine (yılankavi) ızgara: tek uzun sütun yerine satırlara sarar, tek sıralar ters yönde -> komşular hep bitişik
@@ -2095,27 +2138,26 @@ function getHtml(): string {
       nodeEls.forEach(function (el) { el.classList.remove('gv-cur'); });
       if (st.gv.hi >= 0 && hits[st.gv.hi] != null && nodeEls[hits[st.gv.hi]]) nodeEls[hits[st.gv.hi]].classList.add('gv-cur');
     }
-    function applySearch() {   // AND-eşleşme: vurgula (gv-hit), eşleşmeyeni soluklaştır (gv-fade), minimap'ta heatmap (gm-hit)
-      var terms = (st.gv.q || '').trim().toLowerCase();
-      terms = terms ? terms.split(/\\s+/) : [];
-      if (terms.length) {   // arama başlarken önceki seçim/hover .dim/.ehl katmanını temizle (yoksa hit'ler %16 soluk kalır)
+    function applySearch() {   // düz metin (substring AND) + alan predikatları; vurgula (gv-hit) / soluklaştır (gv-fade) / minimap heatmap (gm-hit)
+      var pq = parseSearch(st.gv.q), active = pq.active;
+      if (active) {   // arama başlarken önceki seçim/hover .dim/.ehl katmanını temizle (yoksa hit'ler %16 soluk kalır)
         if (nodeEls && nodeEls.forEach) nodeEls.forEach(function (g) { g.classList.remove('dim'); });
         if (edgeEls && edgeEls.forEach) edgeEls.forEach(function (p) { p.classList.remove('dim'); p.classList.remove('ehl'); });
       }
       hits = []; var hitIds = {};
       if (nodeEls && nodeEls.forEach) nodeEls.forEach(function (el, i) {
-        var n = model.nodes[i]; var on = !!(n && terms.length && terms.every(function (t) { return n._s.indexOf(t) !== -1; }));
+        var n = model.nodes[i]; var on = !!(n && nodeMatch(n, pq));
         if (on) { hits.push(i); hitIds[n.id] = 1; }
-        el.classList.toggle('gv-hit', on); el.classList.toggle('gv-fade', terms.length && !on);
+        el.classList.toggle('gv-hit', on); el.classList.toggle('gv-fade', active && !on);
       });
       if (miniRects && miniRects.forEach) miniRects.forEach(function (mr, i) { var n = model.nodes[i]; mr.classList.toggle('gm-hit', !!(n && hitIds[n.id])); });
       // kenar-fade: model index'i yerine DOM data-f/data-t ile (renderGraph bir kenarı atlasa bile index kaymaz)
-      if (edgeEls && edgeEls.forEach) edgeEls.forEach(function (p) { var on = !!(hitIds[p.getAttribute('data-f')] && hitIds[p.getAttribute('data-t')]); p.classList.toggle('gv-fade', terms.length && !on); });
-      if (gwrap) gwrap.classList.toggle('searching', !!terms.length);
+      if (edgeEls && edgeEls.forEach) edgeEls.forEach(function (p) { var on = !!(hitIds[p.getAttribute('data-f')] && hitIds[p.getAttribute('data-t')]); p.classList.toggle('gv-fade', active && !on); });
+      if (gwrap) gwrap.classList.toggle('searching', active);
       if (st.gv.hi >= hits.length) st.gv.hi = -1;
-      if (sN) sN.textContent = !terms.length ? '' : (!hits.length ? '0' : ((st.gv.hi >= 0 ? (st.gv.hi + 1) + ' / ' : '') + hits.length));
+      if (sN) sN.textContent = !active ? '' : (!hits.length ? '0' : ((st.gv.hi >= 0 ? (st.gv.hi + 1) + ' / ' : '') + hits.length));
       markCur();
-      if (!terms.length && st.gv.sel && model.byId[st.gv.sel]) focus(st.gv.sel);   // arama temizlendi + seçim duruyor -> seçim spotlight'ını geri uygula
+      if (!active && st.gv.sel && model.byId[st.gv.sel]) focus(st.gv.sel);   // arama temizlendi + seçim duruyor -> seçim spotlight'ını geri uygula
     }
     function cycle(d) {   // Enter / Shift+Enter: sıradaki/önceki eşleşmeye merkezle
       if (!hits.length) return;
