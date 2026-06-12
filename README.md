@@ -32,9 +32,11 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   assumptions about your layout, no changes to your program.
 - **One tab per structure.** Each named section becomes its own table; tabs are
   generated dynamically and ordered as they appear in the file.
-- **Three traversal modes.** `linked_list` (head pointer + `next` field),
-  `array` (`count` elements with `.`/`->` access), and `index_list` (a list
-  living inside an array, linked by a *next-index* field — empty slots skipped).
+- **Four traversal modes.** `linked_list` (head pointer + `next` field),
+  `array` (`count` elements with `.`/`->` access), `index_list` (a list
+  living inside an array, linked by a *next-index* field — empty slots skipped),
+  and `tree` (walk a tree from `root` by its child pointers — `children` defaults to
+  `["left","right"]` — drawn as a hierarchical tree in the graph view).
 - **Grouping (tree).** Relate sections: a section can show, in its own tab, as a
   collapsible tree grouped under a master section (`groupBy` + `${master}`) — e.g.
   every process's semaphores under its process node — all at once, with a
@@ -54,7 +56,9 @@ hobby or commercial RTOS, or plain application code. It is **config-driven** and
   graphs. Grouped sections pack their groups into a balanced grid; **drag a group's header**
   to move the whole block. Cards show **all** of a section's visible fields. **Right-click a
   node** to copy it as a watch expression. The **⇄ Links** layer shows both outgoing and
-  **incoming** cross-section links (e.g. which mutexes own a thread).
+  **incoming** cross-section links (e.g. which mutexes own a thread). `tree` sections render
+  as a hierarchical tree. Drag nodes anywhere — the canvas grows in every direction and
+  shrinks back. From the **table**, right-click a row → **Show in graph** to jump to its node.
 - **Usage bars.** Render a numeric field as a `used / max · %` bar
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Cross-reference links.** A field with `"link"` renders as a clickable link to
@@ -169,8 +173,9 @@ Every field, across all modes:
 
 | Field     | Modes | Default | Meaning |
 |-----------|-------|---------|---------|
-| `mode`    | all | — (required) | `"linked_list"`, `"array"`, or `"index_list"`. Selects the traversal. |
-| `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, or buffer). May contain `${master}` (grouping). |
+| `mode`    | all | — (required) | `"linked_list"`, `"array"`, `"index_list"`, or `"tree"`. Selects the traversal. |
+| `root`    | all | — (required) | Starting expression in your program's own syntax (head pointer, array, buffer, or tree root). May contain `${master}` (grouping). |
+| `children`| tree | `["left","right"]` | Child-pointer field names followed from each node (BFS). The graph view lays the result out as a hierarchical tree. |
 | `fields`  | all | — (required) | Ordered list of `{ "label", "expr" }` columns. `label` is the header (and first column = row identity); `expr` is the accessor appended after the element, OR a computed expression using `${expr}` / `${wrapped_expr}` (the element, like `wrap`/`next`) — e.g. `"${expr}->stack_size - ${expr}->stack_used"` for arithmetic across two members. A field may add `"hidden": true` (start collapsed), `"base": "dec"\|"hex"\|"bin"` (default number base), `"bar": { "max": "<expr>", "warn": 75, "crit": 90 }` (render as a usage bar), and/or `"link": { "section": "<target>", "match": "<column>" }` (clickable cross-reference — jump to the target row whose `match` column equals this value; `match` defaults to the target's first column), and/or `"when": "<bool expr>"` (conditional field — blank when false; several on one discriminator make a variant/tagged‑union), `"editable": true` (right‑click → **Edit value…** writes via GDB `set var`; assignable fields only), `"wrap": "<tmpl>"` (transform the field value *after* access — `${expr}` = the accessed value, e.g. `expr:"data"` + `wrap:"((widget_t *)${expr})->x"`), and/or `"badge": { "<value>": "<color>" }` (value→color badge — names like `green`/`red`/`amber`/`cyan` or `#rrggbb` — overriding the built‑in `State` coloring). |
 | `next`    | linked_list, index_list | — (set it) | linked_list: the pointer field to the next node (used as `cursor->next`). index_list: the field holding the next **index**, OR a `${expr}` template that computes it (like `wrap` — `${expr}` is the element; e.g. `"${expr}.link.idx"` or `"g_succ[${expr}.id]"`). The traversal uses this verbatim, so set it; it is only assumed to be `next` when building a grouped master's selector expression. |
 | `head`    | index_list | — | Starting **index** expression, read once. May contain `${master}` (grouping). |

@@ -11,7 +11,7 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 ## Features
 
 - **Config-driven, zero code changes.** Describe each structure in JSON; the extension assumes no layout and needs no instrumentation in your program.
-- **Three traversal modes.** `linked_list` (follow a `next` pointer until NULL), `array` (iterate `count` elements), and `index_list` (a list stored inside an array, linked by a next-*index* field, walking from `head` to `nil`; unused slots are skipped).
+- **Four traversal modes.** `linked_list` (follow a `next` pointer until NULL), `array` (iterate `count` elements), `index_list` (a list stored inside an array, linked by a next-*index* field, walking from `head` to `nil`; unused slots are skipped), and `tree` (walk a tree from `root` by its child pointers — `"children": ["left","right"]` by default — rendered as a hierarchical tree in the graph view).
 - **Arbitrary root expressions.** `root` is passed to GDB verbatim, so anything valid works: `head`, `g_sys.thread_list`, `g_kernel.pools[0]->thread_list`.
 - **Live updates.** The panel refreshes on every stop and shows a `running…` badge while the program runs; a status pill reads `stopped` / `running…` / `paused`, plus an `updated <time>` timestamp. The panel **closes automatically when the debug session ends**.
 - **Prioritized streaming refresh.** On each stop the **active tab is fetched and shown first**, then the other visible sections stream in **in the background**. **Switching tabs re-prioritizes** — the tab you open jumps the queue and is fetched next — so large workspaces stay responsive. Sections still in the queue (and newly revealed ones) show a **“Loading…”** placeholder until their data arrives, and **each tab shows a spinning ⟳** while its section is still being fetched — so you can watch sections update one by one. The Refresh button reflects the overall state.
@@ -43,7 +43,9 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
   graphs. Grouped sections pack their groups into a balanced grid; **drag a group's header**
   to move the whole block. Cards show **all** of a section's visible fields. **Right-click a
   node** to copy it as a watch expression. The **⇄ Links** layer shows both outgoing and
-  **incoming** cross-section links (e.g. which mutexes own a thread).
+  **incoming** cross-section links (e.g. which mutexes own a thread). `tree` sections render
+  as a hierarchical tree. Drag nodes anywhere — the canvas grows in every direction and
+  shrinks back. From the **table**, right-click a row → **Show in graph** to jump to its node.
 - **Usage bars.** Render a numeric field as a `used / max · %` bar
   (green → amber → red) with a field's `"bar"` — e.g. per-thread **stack usage**.
 - **Cross-reference links.** A field with `"link"` renders as a clickable link to
@@ -84,8 +86,9 @@ The config file (default `debug-inspector.json`) is a JSON object that is a **ma
 
 | Field     | Modes                       | Meaning |
 |-----------|-----------------------------|---------|
-| `mode`    | all *(required)*            | `"linked_list"`, `"array"`, or `"index_list"`. |
-| `root`    | all *(required)*            | Starting expression in your program's own syntax (head pointer or array). May contain `${master}` (grouping). |
+| `mode`    | all *(required)*            | `"linked_list"`, `"array"`, `"index_list"`, or `"tree"`. |
+| `root`    | all *(required)*            | Starting expression in your program's own syntax (head pointer, array, or tree root). May contain `${master}` (grouping). |
+| `children`| tree                        | Child-pointer field names walked from each node (BFS); defaults to `["left","right"]`. The graph view draws the result as a hierarchical tree. |
 | `next`    | linked_list, index_list     | Field giving the next element — a **pointer** (`cursor->next`) for linked_list, an **index** for index_list. For index_list it may instead be a `${expr}` **template** (like `wrap`) that computes the next index, e.g. `"${expr}.link.idx"`. Used verbatim, so set it (it only falls back to `next` when building a master's clickable/grouped selector). |
 | `head`    | index_list                  | Starting **index** expression. May contain `${master}` (grouping). |
 | `nil`     | index_list                  | Sentinel index that ends the walk (default `-1`). May contain `${master}` (grouping). |

@@ -15,8 +15,9 @@ interface FieldCfg {
   badge?: Record<string, string>;  // değer -> renk rozet eşlemesi (case-insensitive tam eşleşme); renk adı (green/blue/red/amber/purple/cyan/gray) veya #rrggbb. Verilirse built-in State/Discipline heuristic'i yerine bu kullanılır.
 }
 interface SectionCfg {
-  mode: 'linked_list' | 'array' | 'index_list';
+  mode: 'linked_list' | 'array' | 'index_list' | 'tree';
   root: string;
+  children?: string[];   // tree: çocuk pointer alan adları (örn ["left","right"]); varsayılan ["left","right"]
   next?: string;      // linked_list: sonraki node pointer alanı | index_list: sonraki index alanı
   head?: string;      // index_list: başlangıç index ifadesi
   nil?: string;       // index_list: gezinmeyi bitiren index (varsayılan "-1")
@@ -43,7 +44,7 @@ interface Section {
   needsSelection?: boolean;   // gruplu bölüm: master bölüm boş/bulunamadı
   grouped?: boolean;          // groupBy ile ağaç olarak gruplanmış
   groups?: Group[];           // her master elemanı için bir grup
-  kind?: 'linked' | 'array' | 'index';   // graph view: zincir (next) vs ızgara (array) yerleşimi
+  kind?: 'linked' | 'array' | 'index' | 'tree';   // graph view: zincir (next) / ızgara (array) / hiyerarşi (tree) yerleşimi
 }
 interface ColPref { order: string[]; hidden: string[]; }
 
@@ -603,6 +604,34 @@ async function collectSection(
       log.trace(`index_list "${name}" step ${guard - 1}: idx ${fromIdx} → next [ ${nextExpr} ] = "${nxRaw}" → idx ${idx}`);
     }
     log.debug(`index_list "${name}": ${rows.length} row(s); stopped: ${reason}`);
+  } else if (cfg.mode === 'tree') {
+    // ağaç: kök + çocuk pointer alanları (varsayılan left/right) — BFS; her satır __parent__ (flat index) taşır.
+    const childFields = (Array.isArray(cfg.children) && cfg.children.length) ? cfg.children : ['left', 'right'];
+    const queue: { expr: string; parent: number }[] = [{ expr: cfg.root, parent: -1 }];
+    const seen: Record<string, boolean> = {};   // adres -> döngü koruması
+    let reason = 'end';
+    log.debug(`tree "${name}": root=${cfg.root}, children=[${childFields.join(', ')}], access="->"`);
+    while (queue.length) {
+      if (isStale && isStale()) { reason = 'stale (resumed/superseded)'; break; }
+      if (rows.length >= max) { reason = `max bound (${max})`; break; }
+      const node = queue.shift()!;
+      const curRaw = cleanValue(await gdbExec(session, `print ${node.expr}`, frameId));
+      // NULL veya OKUNAMAZ (hatalı/eksik child alanı, dangling pointer) -> alt-ağacı sonlandır (sahte satır + sonsuz fan-out olmasın)
+      if (isNull(curRaw) || /^<<error|no symbol|cannot access memory|<error reading|there is no member|value (has been )?optimized out/i.test(curRaw)) continue;
+      const am = curRaw.match(/0x[0-9a-fA-F]+/);
+      const key = am ? am[0] : node.expr;
+      if (key !== '0x0' && seen[key]) continue;   // aynı düğüm tekrar -> döngü, atla
+      seen[key] = true;
+      // elemana erişmeden ÖNCE wrap; kararlı yol ifadesi (root->left->right...) edit/watch için
+      const elem = cfg.wrap ? '(' + cfg.wrap.split('${expr}').join('(' + node.expr + ')') + ')' : node.expr;
+      const myIdx = rows.length;
+      const row = await collectRowFields(session, cfg.fields, frameId, node.expr, elem, '->', node.expr, elem);
+      row['__parent__'] = node.parent < 0 ? '' : String(node.parent);
+      rows.push(row);
+      for (const cf of childFields) queue.push({ expr: `${node.expr}->${cf}`, parent: myIdx });
+      log.trace(`tree "${name}" node ${myIdx} (parent ${node.parent}): ${node.expr} = ${curRaw}`);
+    }
+    log.debug(`tree "${name}": ${rows.length} node(s); stopped: ${reason}`);
   } else {
     log.debug(`linked_list "${name}": root=${cfg.root}, advance via cursor->${cfg.next}, access="->"`);
     let guard = 0;
@@ -754,7 +783,7 @@ async function buildSection(
     .filter((f): f is FieldCfg => !!f);
   const rows = await collectSection(session, { ...cfg, fields: effFields }, frameId, cursor, name, isStale);
   log?.debug(`section "${name}" (${cfg.mode}, root=${cfg.root}): ${rows.length} row(s); active=[${eff.active.join(', ')}]`);
-  const kind: 'linked' | 'array' | 'index' = cfg.mode === 'array' ? 'array' : cfg.mode === 'index_list' ? 'index' : 'linked';
+  const kind: 'linked' | 'array' | 'index' | 'tree' = cfg.mode === 'array' ? 'array' : cfg.mode === 'index_list' ? 'index' : cfg.mode === 'tree' ? 'tree' : 'linked';
   return { name, columnsAll: eff.order, hidden: eff.hidden, rows, summary: summarize(name, rows), bases: fieldBases(cfg.fields), bars: fieldBars(cfg.fields), links: fieldLinks(cfg.fields), badges: fieldBadges(cfg.fields), kind };
 }
 
@@ -1956,6 +1985,24 @@ function getHtml(): string {
         });
         curX += b.bw + GAPX; rowMaxH = Math.max(rowMaxH, b.bh); col++;
       });
+    } else if (sec.kind === 'tree') {
+      // hiyerarşik ağaç: kök üstte, çocuklar altta; x = alt-ağaç ortası (tidy), y = derinlik
+      var trows = sec.rows || [];
+      var par = trows.map(function (r) { var p = r['__parent__']; return (p == null || p === '') ? -1 : (+p); });
+      var children = {}; par.forEach(function (p, i) { if (p >= 0) (children[p] || (children[p] = [])).push(i); });
+      var depth = trows.map(function (r, i) { var d = 0, p = par[i], g = 0; while (p >= 0 && g++ < trows.length) { d++; p = par[p]; } return d; });
+      var COLW = GVW + GVGX, ROWH = CARDH + GVGY + 22, xpos = [], leafN = 0;
+      var place = function (i) {
+        var ch = children[i] || [];
+        if (!ch.length) { xpos[i] = leafN * COLW; leafN++; }
+        else { ch.forEach(place); xpos[i] = (xpos[ch[0]] + xpos[ch[ch.length - 1]]) / 2; }
+      };
+      trows.forEach(function (r, i) { if (par[i] < 0) place(i); });
+      trows.forEach(function (r, i) {
+        if (nodes.length >= GRAPH_MAX) { capped = true; return; }
+        nodes.push({ id: 'n' + i, row: r, pkey: posKeyOf(r, cols, 'n' + i), x: GVPAD + (xpos[i] || 0), y: GVPAD + 22 + depth[i] * ROWH, w: GVW, h: CARDH, cols: cols });
+        if (par[i] >= 0) edges.push({ from: 'n' + par[i], to: 'n' + i, type: 'next' });   // ebeveyn -> çocuk (dikey)
+      });
     } else if (sec.kind === 'linked' || sec.kind === 'index') {
       // serpentine (yılankavi) ızgara: tek uzun sütun yerine satırlara sarar, tek sıralar ters yönde -> komşular hep bitişik
       var lrows = sec.rows || [];
@@ -2056,8 +2103,12 @@ function getHtml(): string {
       else { var parts = []; (n.cols || []).forEach(function (c) { parts.push(c); parts.push(shortVal(n.row[c])); }); n._s = parts.join(' ').toLowerCase(); }
     });
     var byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
-    var mx = 0, my = 0; nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
-    return { nodes: nodes, edges: edges, byId: byId, capped: capped, linkCapped: linkCapped, cw: mx + GVPAD, ch: my + GVPAD };
+    // TAM sınırlayıcı kutu (min+max) -> içerik her yöne (negatif dahil) genişleyebilir; nesne kalmayınca küçülür
+    var bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    nodes.forEach(function (n) { if (n.x < bx0) bx0 = n.x; if (n.y < by0) by0 = n.y; if (n.x + n.w > bx1) bx1 = n.x + n.w; if (n.y + n.h > by1) by1 = n.y + n.h; });
+    if (!nodes.length) { bx0 = 0; by0 = 0; bx1 = GVPAD; by1 = GVPAD; }
+    bx0 -= GVPAD; by0 -= GVPAD; bx1 += GVPAD; by1 += GVPAD;
+    return { nodes: nodes, edges: edges, byId: byId, capped: capped, linkCapped: linkCapped, bx0: bx0, by0: by0, bx1: bx1, by1: by1, cw: bx1 - bx0, ch: by1 - by0 };
   }
   function edgePath(a, b, type) {
     if (type === 'grouped') {
@@ -2183,9 +2234,9 @@ function getHtml(): string {
     var pbody = bodyEl(name);
     var sBox = pbody ? pbody.querySelector('.gv-search') : null, sN = pbody ? pbody.querySelector('.gv-srch-n') : null;
     var MMW = 180, MMH = 120, mscale = 1, hits = [];
-    function setMiniScale() {   // graf'ı minimap kutusuna sığdıran ölçek (bounds değişince güncellenir)
+    function setMiniScale() {   // bbox'u (negatif dahil) minimap kutusuna sığdıran ölçek + kaydırma (bounds değişince güncellenir)
       var ms = Math.min(MMW / model.cw, MMH / model.ch); if (!isFinite(ms) || ms <= 0) ms = 1;
-      mscale = ms; if (mg) mg.setAttribute('transform', 'scale(' + ms + ')');
+      mscale = ms; if (mg) mg.setAttribute('transform', 'translate(' + (-model.bx0 * ms) + ',' + (-model.by0 * ms) + ') scale(' + ms + ')');
     }
     setMiniScale();
     function syncMini() {   // minimap viewport dikdörtgeni (graf koordinatında; gmg ölçeği küçültür)
@@ -2242,10 +2293,12 @@ function getHtml(): string {
         p.setAttribute('d', edgePath(a, b, p.classList.contains('grouped') ? 'grouped' : p.classList.contains('link') ? 'link' : 'next'));
       });
     }
-    function recomputeBounds() {   // sürükleme sonrası Fit doğru çerçevelesin (re-render olmadan)
-      var mx = 0, my = 0;
-      model.nodes.forEach(function (n) { if (n.x + n.w > mx) mx = n.x + n.w; if (n.y + n.h > my) my = n.y + n.h; });
-      model.cw = mx + GVPAD; model.ch = my + GVPAD;
+    function recomputeBounds() {   // sürükleme sonrası TAM bbox (her yöne); nesne çekilince küçülür
+      var bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+      model.nodes.forEach(function (n) { if (n.x < bx0) bx0 = n.x; if (n.y < by0) by0 = n.y; if (n.x + n.w > bx1) bx1 = n.x + n.w; if (n.y + n.h > by1) by1 = n.y + n.h; });
+      if (!model.nodes.length) { bx0 = 0; by0 = 0; bx1 = GVPAD; by1 = GVPAD; }
+      bx0 -= GVPAD; by0 -= GVPAD; bx1 += GVPAD; by1 += GVPAD;
+      model.bx0 = bx0; model.by0 = by0; model.bx1 = bx1; model.by1 = by1; model.cw = bx1 - bx0; model.ch = by1 - by0;
     }
     function apply() {
       vp.setAttribute('transform', 'translate(' + st.gv.tx + ',' + st.gv.ty + ') scale(' + st.gv.sc + ')');
@@ -2256,7 +2309,10 @@ function getHtml(): string {
       var sw = svg.clientWidth, sh = svg.clientHeight;
       if (!sw || !sh) { st.gv.needFit = true; apply(); return; }
       var s = Math.min(sw / model.cw, sh / model.ch, 1); if (!isFinite(s) || s <= 0) s = 1;
-      st.gv.sc = s; st.gv.tx = Math.max(8, (sw - model.cw * s) / 2); st.gv.ty = 10; st.gv.needFit = false; apply();
+      st.gv.sc = s;
+      st.gv.tx = (sw - model.cw * s) / 2 - model.bx0 * s;   // bbox'u yatay ortala (negatif origin dahil)
+      st.gv.ty = 10 - model.by0 * s;                        // üstten ~10px
+      st.gv.needFit = false; apply();
     }
     if (st.gv.needFit) fit(); else apply();
     function neighbors(id) { var ns = {}; ns[id] = 1; model.edges.forEach(function (e) { if (e.from === id || e.to === id) { ns[e.from] = 1; ns[e.to] = 1; } }); return ns; }
@@ -2316,22 +2372,19 @@ function getHtml(): string {
         e.stopPropagation();
         var items = [{ n: n, el: g, ox: n.x, oy: n.y }];
         if (n.group && n.members) n.members.forEach(function (mid) { var m = model.byId[mid], el = m ? (nodeEls && nodeEls[m._i]) : null; if (m && el) items.push({ n: m, el: el, ox: m.x, oy: m.y }); });
-        var minOx = Infinity, minOy = Infinity;
-        items.forEach(function (it) { if (it.ox < minOx) minOx = it.ox; if (it.oy < minOy) minOy = it.oy; });
-        nd = { id: id, g: g, sx: e.clientX, sy: e.clientY, moved: false, items: items, minOx: minOx, minOy: minOy };
+        nd = { id: id, g: g, sx: e.clientX, sy: e.clientY, moved: false, items: items };
         g.classList.add('gv-dragging');
         return;
       }
       dragging = true; lx = e.clientX; ly = e.clientY; svg.classList.add('panning');
     });
     svg.addEventListener('mousemove', function (e) {
-      if (nd) {   // düğüm(ler) sürükleniyor: delta / sc ile 1:1 takip, bağlı kenarları + minimap'i canlı güncelle
+      if (nd) {   // düğüm(ler) sürükleniyor: tek delta tüm öğelere -> blok bütün; HER YÖNE (negatif/sol-üst dahil), clamp yok
         if (!nd.moved && (Math.abs(e.clientX - nd.sx) + Math.abs(e.clientY - nd.sy)) > 3) nd.moved = true;
         if (!nd.moved) return;
         var dx = (e.clientX - nd.sx) / st.gv.sc, dy = (e.clientY - nd.sy) / st.gv.sc;
-        var adx = Math.max(dx, -nd.minOx), ady = Math.max(dy, -nd.minOy);   // bloğu BÜTÜN tut: delta'yı bir kez clamp et (kenarda shear olmasın)
         nd.items.forEach(function (it) {
-          it.n.x = it.ox + adx; it.n.y = it.oy + ady;
+          it.n.x = it.ox + dx; it.n.y = it.oy + dy;
           if (it.el) it.el.setAttribute('transform', 'translate(' + it.n.x + ',' + it.n.y + ')');
           redrawEdges(it.n.id); nudgeMiniNode(it.n);
         });
@@ -2361,7 +2414,7 @@ function getHtml(): string {
     // minimap: tıkla/sürükle -> ana görünümü o noktaya merkezle
     if (miniSvg) {
       var mpan = false;
-      var miniTo = function (e) { var r = miniSvg.getBoundingClientRect(); centerPoint((e.clientX - r.left) / mscale, (e.clientY - r.top) / mscale, st.gv.sc); };
+      var miniTo = function (e) { var r = miniSvg.getBoundingClientRect(); centerPoint((e.clientX - r.left) / mscale + model.bx0, (e.clientY - r.top) / mscale + model.by0, st.gv.sc); };
       miniSvg.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); mpan = true; miniTo(e); });
       miniSvg.addEventListener('mousemove', function (e) { if (mpan) miniTo(e); });
       var mEnd = function () { mpan = false; };
@@ -2531,6 +2584,20 @@ function getHtml(): string {
     if (cc) { vscodeApi.postMessage({ type: 'copy', text: cc.dataset.text || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const cw = e.target.closest('.cell-watch');
     if (cw) { vscodeApi.postMessage({ type: 'copyWatch', text: cw.dataset.el || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
+    const sg = e.target.closest('.show-graph');
+    if (sg) {   // tablo satırı -> graph görünümüne geç + o satırın düğümüne merkezlen
+      const nm = sg.dataset.section; const stg = secState[nm];
+      if (stg && stg.sec) {
+        stg.view = 'graph'; if (!stg.gv) stg.gv = gvInit();
+        paint(nm);
+        const cols = displayCols(stg);
+        const allRows = stg.sec.grouped ? stg.sec.groups.reduce((a, g) => a.concat(g.rows), []) : stg.sec.rows;
+        const ri = (sg.dataset.ri != null && sg.dataset.ri !== '') ? +sg.dataset.ri : -1;
+        const row = (ri >= 0 && allRows[ri]) ? allRows[ri] : null;
+        if (row && cols.length && typeof stg._focusNode === 'function') stg._focusNode(cols[0], row[cols[0]]);
+      }
+      for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return;
+    }
     const wp = e.target.closest('.cell-wp');
     if (wp) { vscodeApi.postMessage({ type: 'watchpoint', expr: wp.dataset.lv || '' }); for (const mm of document.querySelectorAll('.cols-menu')) mm.classList.add('hidden'); e.stopPropagation(); return; }
     const uwp = e.target.closest('.cell-unwp');
@@ -2777,6 +2844,8 @@ function getHtml(): string {
       const txt = (td.textContent || '').trim();
       let h = '<div class="cm-item cell-copy" data-text="' + esc(txt) + '">Copy cell</div>';
       const trEl = td.closest('tr');
+      if (trEl && trEl.dataset.ri != null && trEl.dataset.ri !== '')   // bu satırı GRAPH görünümünde göster + o düğüme merkezlen
+        h += '<div class="cm-item show-graph" data-section="' + esc(name) + '" data-ri="' + esc(trEl.dataset.ri) + '">Show in graph</div>';
       if (trEl && trEl.dataset.el)   // satırın kararlı eleman ifadesini watch için kopyala (VS Code Watch'a yapıştır)
         h += '<div class="cm-item cell-watch" data-el="' + esc(trEl.dataset.el) + '">Copy row as watch expression</div>';
       if (td.dataset.lv) {   // bu hücrenin alanına GDB watchpoint'i (değer değişince durdurur)

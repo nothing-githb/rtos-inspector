@@ -127,6 +127,17 @@
     ]
   },
 
+  "//btree": "tree modu: ikili arama ağacı (g_tree_root). 'children' çocuk pointer alanları (left/right). Graph görünümünde hiyerarşik ağaç olarak çizilir (kök üstte, çocuklar altta).",
+  "btree": {
+    "mode": "tree",
+    "root": "g_tree_root",
+    "children": ["left", "right"],
+    "fields": [
+      { "label": "Key",   "expr": "key" },
+      { "label": "Label", "expr": "label" }
+    ]
+  },
+
   "//procSlots": "grouped + index_list birlikte: her process'in g_slot_pool içindeki index-zinciri. head ${master}->slot_head ile o process'e göre başlar; processes altında ağaç. 'next' burada wrap-benzeri ${expr} şablonu (elem.next) ile yazılmıştır.",
   "procSlots": {
     "groupBy": "processes",

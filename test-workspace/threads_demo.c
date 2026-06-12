@@ -101,6 +101,13 @@ typedef struct {
     kpool_t *pools[2];
 } kernel_t;
 
+/* binary search tree (tree mode demo): kok + left/right cocuk pointer'lari */
+typedef struct bnode {
+    int key;
+    char label[8];
+    struct bnode *left, *right;
+} bnode_t;
+
 /* ---- global'ler (YÜZLERCE satır: ana tablolar döngülerle üretilir) ---- */
 #define N_PROC      8                  /* master process sayisi */
 #define TPP         32                 /* thread / process -> 256 thread */
@@ -133,6 +140,9 @@ slot_t      g_slot_pool[MAX_SLOTS];        /* index ile bagli; process basina bi
 int         g_slot_head;                   /* global zincirin ilk index'i */
 kpool_t  g_pool0;
 kernel_t g_kernel;
+bnode_t  g_bnodes[16];
+int      g_bnode_count = 0;
+bnode_t *g_tree_root;                      /* binary search tree (tree mode demo) */
 
 /* libc yok -> isimler literal havuzundan döngüsel seçilir */
 static const char *NAMES[]  = { "main","worker","logger","net","disk","audio","video","sensor","timer","gc","ui","ipc" };
@@ -186,6 +196,18 @@ static process_t *mk_proc(int pid, const char *name, tcb_t *threads, ksem_t *sem
     p->thread_list = threads; p->sem_list = sems; p->mutex_list = mutexes;
     p->next = NULL;
     return p;
+}
+
+static bnode_t *bst_insert(bnode_t *root, int key, const char *label)
+{
+    if (!root) {
+        bnode_t *n = &g_bnodes[g_bnode_count++];
+        n->key = key; set_tag(n->label, label); n->left = NULL; n->right = NULL;
+        return n;
+    }
+    if (key < root->key) root->left  = bst_insert(root->left,  key, label);
+    else                 root->right = bst_insert(root->right, key, label);
+    return root;
 }
 
 /* Breakpoint'i buraya koy. printf yerine gozlemlenebilir bir yan etki. */
@@ -273,6 +295,14 @@ int main(void)
     g_pool0.mutex_list  = &g_mutexes[0];
     g_kernel.pools[0]   = &g_pool0;
     g_kernel.pools[1]   = NULL;
+
+    /* binary search tree (tree mode demo) */
+    {
+        int bk[7] = { 50, 30, 70, 20, 40, 60, 80 };
+        const char *bl[7] = { "root", "l", "r", "ll", "lr", "rl", "rr" };
+        g_tree_root = NULL;
+        for (int i = 0; i < 7; i++) g_tree_root = bst_insert(g_tree_root, bk[i], bl[i]);
+    }
 
     for (int tick = 0; tick < 3; tick++) {
         g_threads[1].state  = (tick % 2) ? RUNNING : READY;   /* değişiklik-vurgusu örneği */

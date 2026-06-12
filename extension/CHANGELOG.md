@@ -2,6 +2,21 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.56.0] - 2026-06-12
+
+### Added
+- **Tree data structure (`"mode": "tree"`).** Traverses a tree from its `root` by following
+  child pointers (`"children": ["left","right"]` by default), and the graph view draws it as a
+  proper **hierarchical tree** — root on top, children below, each parent centred over its
+  subtree. (Table view lists the nodes.)
+- **"Show in graph" on a table row.** Right-click a row → **Show in graph** switches that
+  section to the graph view and centres/highlights the row's node.
+
+### Changed
+- **The graph canvas expands in every direction.** You can now drag nodes up and left into
+  open space (the graph grows that way), and **Fit** + the minimap follow; move nodes back and
+  the canvas shrinks again. (Previously nodes were pinned to the top-left origin.)
+
 ## [0.55.0] - 2026-06-12
 
 ### Added
