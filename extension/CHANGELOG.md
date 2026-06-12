@@ -2,6 +2,15 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.58.0] - 2026-06-12
+
+### Changed
+- **Graph edges are direction-aware.** Each edge now connects the two nodes by their
+  nearest facing sides, and the arrowhead always points *into* the target from the side the
+  line arrives from — and it updates live as you drag nodes around (e.g. drag a child above
+  its parent and the arrow flips to point up into it). Grouped (group→member) edges keep
+  their gutter routing so they still never cut through the cards in between.
+
 ## [0.57.0] - 2026-06-12
 
 ### Changed

@@ -2125,19 +2125,23 @@ function getHtml(): string {
         ' Q' + gx + ',' + my + ' ' + (gx + r) + ',' + my +
         ' L' + bx + ',' + my;
     }
-    if (type === 'next') {
-      // aynı satırdaki serpentine komşular -> yatay S; sarma (farklı satır) -> dikey alt-üst S
-      if (Math.abs(a.y - b.y) < a.h) {
-        var ax = a.x < b.x ? a.x + a.w : a.x, bx2 = a.x < b.x ? b.x : b.x + b.w;
-        var ay = a.y + a.h / 2, by = b.y + b.h / 2, hmx = (ax + bx2) / 2;
-        return 'M' + ax + ',' + ay + ' C' + hmx + ',' + ay + ' ' + hmx + ',' + by + ' ' + bx2 + ',' + by;
-      }
-      var x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, vmy = (y1 + y2) / 2;
-      return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + vmy + ' ' + x2 + ',' + vmy + ' ' + x2 + ',' + y2;
+    // next / tree / link / default: YÖNE DUYARLI yönlendirme — kaynağın ve hedefin birbirine BAKAN
+    // en yakın kenarlarından bağla; bitiş teğeti hedefin İÇİNE doğru -> orient=auto ok her zaman
+    // çizginin geldiği yöne uygun döner ve düğümler sürüklendikçe canlı güncellenir.
+    var acx = a.x + a.w / 2, acy = a.y + a.h / 2, bcx = b.x + b.w / 2, bcy = b.y + b.h / 2;
+    var dx = bcx - acx, dy = bcy - acy;
+    var k = Math.max(24, Math.min(70, (Math.abs(dx) + Math.abs(dy)) / 3));
+    var ex, ey, bx, by, c1x, c1y, c2x, c2y;
+    if (Math.abs(dx) >= Math.abs(dy)) {   // yatay yaklaşım
+      var sgx = dx >= 0 ? 1 : -1;
+      ex = dx >= 0 ? a.x + a.w : a.x; ey = acy; bx = dx >= 0 ? b.x : b.x + b.w; by = bcy;
+      c1x = ex + sgx * k; c1y = ey; c2x = bx - sgx * k; c2y = by;
+    } else {                              // dikey yaklaşım
+      var sgy = dy >= 0 ? 1 : -1;
+      ex = acx; ey = dy >= 0 ? a.y + a.h : a.y; bx = bcx; by = dy >= 0 ? b.y : b.y + b.h;
+      c1x = ex; c1y = ey + sgy * k; c2x = bx; c2y = by - sgy * k;
     }
-    // 'link' (cross-section) ve varsayılan: kaynak sağ-orta -> hedef sol-orta yatay S
-    var X1 = a.x + a.w, Y1 = a.y + a.h / 2, X2 = b.x, Y2 = b.y + b.h / 2, gmx = (X1 + X2) / 2;
-    return 'M' + X1 + ',' + Y1 + ' C' + gmx + ',' + Y1 + ' ' + gmx + ',' + Y2 + ' ' + X2 + ',' + Y2;
+    return 'M' + ex + ',' + ey + ' C' + c1x + ',' + c1y + ' ' + c2x + ',' + c2y + ' ' + bx + ',' + by;
   }
   function nodeSvg(n, badges, bars) {
     if (n.group) {
