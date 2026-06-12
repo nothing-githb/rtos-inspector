@@ -8,6 +8,18 @@ Debug Inspector turns the structures *you* describe into clean, tabbed, sortable
 
 *Representative panel — per-process threads with `State` badges, stack‑usage bars, an `Owner` cross‑reference link, change highlighting, and per‑column number‑base / sort controls.*
 
+### Graph view
+
+Toggle any section to an interactive **node graph**. Linked lists and arrays flow as a serpentine grid with arrowed edges; `tree` structures render as a top-down hierarchy. Cards size to their content, colour‑code state, draw usage bars, and show value‑mapped labels — and you can pan, zoom, drag nodes, search, and follow cross‑section links, with a minimap for large graphs.
+
+![Graph view — a linked list as a node graph](https://raw.githubusercontent.com/nothing-githb/debug-inspector/master/extension/images/graph-threads.png)
+
+*A linked thread list as a node graph: per‑state colour stripes/dots, stack‑usage bars, and arrowed `next` edges in a serpentine layout.*
+
+![Graph view — a tree rendered as a hierarchy](https://raw.githubusercontent.com/nothing-githb/debug-inspector/master/extension/images/graph-tree.png)
+
+*A binary search tree as a hierarchy: edges leave each parent's bottom‑centre and enter each child's top‑centre.*
+
 ## Features
 
 - **Config-driven, zero code changes.** Describe each structure in JSON; the extension assumes no layout and needs no instrumentation in your program.

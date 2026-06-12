@@ -2,6 +2,13 @@
 
 All notable changes to the **Debug Inspector** extension are documented here.
 
+## [0.60.2] - 2026-06-12
+
+### Docs
+- Added graph-view screenshots to the README: a linked list rendered as a node graph
+  (state colours, usage bars, arrowed edges) and a binary search tree rendered as a
+  top-down hierarchy.
+
 ## [0.60.1] - 2026-06-12
 
 ### Fixed

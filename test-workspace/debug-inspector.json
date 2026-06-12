@@ -134,7 +134,9 @@
     "children": ["left", "right"],
     "fields": [
       { "label": "Key",   "expr": "key" },
-      { "label": "Label", "expr": "label" }
+      { "label": "Label", "expr": "label" },
+      { "label": "Left", "expr": "left" },
+      { "label": "Right", "expr": "right" }
     ]
   },
 
